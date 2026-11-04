@@ -1,25 +1,20 @@
-
 import 'package:flutter_contacts/flutter_contacts.dart';
 
 class ContactsService {
 
   Future<String?> chercherContact(String numero) async {
 
-    // Demander l'autorisation
-    final permission = await FlutterContacts.permissions.request(
-      PermissionType.read,
-    );
-
-    if (permission != PermissionStatus.granted) {
+    //  Demander la permission
+    if (!await FlutterContacts.requestPermission()) {
       return null;
     }
 
-    // Récupérer les contacts du téléphone
-    final contacts = await FlutterContacts.getAll(
-      properties: {ContactProperty.phone},
+    //  Récupérer les vrais contacts du téléphone
+    final contacts = await FlutterContacts.getContacts(
+      withProperties: true,
     );
 
-    // Chercher le numéro
+    //  Rechercher le numéro
     for (final contact in contacts) {
       for (final telephone in contact.phones) {
         if (telephone.number == numero) {
@@ -28,7 +23,7 @@ class ContactsService {
       }
     }
 
-    // Aucun contact trouvé
+    //  Contact inconnu
     return null;
   }
 }
