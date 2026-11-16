@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'screens/accueil_screen.dart';
+import 'services/services.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Le gestionnaire écoute les appels entrants dès le démarrage.
+  Services.gestionnaire.demarrer();
+
   runApp(const GestionnaireAppelsApp());
 }
 
