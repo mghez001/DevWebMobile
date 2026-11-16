@@ -49,6 +49,9 @@ class GestionnaireAppels {
   final Set<String> _decroches = {};
   final Map<String, DateTime> _debutCommunication = {};
   final Map<String, Timer> _minuteurs = {};
+
+  /// Appels sortants en cours : id → (numéro, début).
+  final Map<String, (String, DateTime)> _sortants = {};
   final Map<String, DateTime> _bloquesJusqua = {};
 
   StreamSubscription<AppelEntrant>? _abonnementAppels;
@@ -78,7 +81,12 @@ class GestionnaireAppels {
     _minuteurs.clear();
   }
 
-  Future<String> appeler(String numero) => sip.appeler(numero);
+  /// Appel sortant (il sera ajouté au journal à la fin de l'appel).
+  Future<String> appeler(String numero) async {
+    final id = await sip.appeler(numero);
+    _sortants[id] = (normaliserNumero(numero), _horloge());
+    return id;
+  }
   Future<void> decrocher(String idAppel) => sip.decrocher(idAppel);
   Future<void> raccrocher(String idAppel) => sip.raccrocher(idAppel);
 
@@ -198,14 +206,35 @@ class GestionnaireAppels {
         _annulerMinuteur(id);
         final repondu = _decroches.remove(id);
         final debut = _debutCommunication.remove(id);
+        final duree =
+            debut == null ? Duration.zero : _horloge().difference(debut);
+
+        // Appel entrant qui a sonné → répondu ou manqué.
         final enAttente = _enAttente.remove(id);
         if (enAttente != null) {
+          final decision = enAttente.$2;
           await _journaliser(
             enAttente.$1,
             repondu ? IssueAppel.repondu : IssueAppel.manque,
-            enAttente.$2.regle?.nom,
-            duree: debut == null ? Duration.zero : _horloge().difference(debut),
+            // Explication du moteur (ex. « Favori (Maman) : sonne toujours »),
+            // sauf pour la sonnerie par défaut qui n'apporte rien.
+            identical(decision, Decision.parDefaut) ? null : decision.explication,
+            duree: duree,
           );
+        }
+
+        // Appel sortant terminé.
+        final sortant = _sortants.remove(id);
+        if (sortant != null) {
+          await journal.ajouter(Appel(
+            id: id,
+            sens: SensAppel.sortant,
+            numero: sortant.$1,
+            nomContact: moteur.trouverContact(sortant.$1, contacts.tous)?.nom,
+            debut: sortant.$2,
+            duree: duree,
+            issue: IssueAppel.emis,
+          ));
         }
     }
   }

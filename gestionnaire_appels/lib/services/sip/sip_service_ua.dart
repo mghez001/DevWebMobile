@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:sip_ua/sip_ua.dart';
 
@@ -100,7 +100,10 @@ class SipServiceUa implements SipService, SipUaHelperListener {
     if (compte == null) throw StateError('Pas connecté au serveur SIP');
 
     final micro = await _ouvrirMicro();
-    _prochainSortant = Completer<String>();
+    // On garde une référence locale : sip_ua signale l'appel (CALL_INITIATION)
+    // PENDANT _helper.call, et callStateChanged remet _prochainSortant à null.
+    final attente = Completer<String>();
+    _prochainSortant = attente;
     final ok = await _helper.call(
       _uri(numero),
       voiceOnly: true,
@@ -110,7 +113,7 @@ class SipServiceUa implements SipService, SipUaHelperListener {
       _prochainSortant = null;
       throw StateError("Impossible d'appeler : pas connecté au serveur");
     }
-    return _prochainSortant!.future.timeout(const Duration(seconds: 5));
+    return attente.future.timeout(const Duration(seconds: 5));
   }
 
   @override
@@ -122,13 +125,11 @@ class SipServiceUa implements SipService, SipUaHelperListener {
   }
 
   @override
-  Future<void> raccrocher(String idAppel) async {
-    _appels[idAppel]?.hangup();
-  }
+  Future<void> raccrocher(String idAppel) async => _terminer(idAppel);
 
   @override
   Future<void> rejeter(String idAppel, {int code = 603, String? raison}) async {
-    _appels[idAppel]?.hangup({
+    _terminer(idAppel, {
       'status_code': code,
       if (raison != null) 'reason_phrase': raison,
     });
@@ -136,11 +137,31 @@ class SipServiceUa implements SipService, SipUaHelperListener {
 
   @override
   Future<void> rediriger(String idAppel, String cible) async {
-    _appels[idAppel]?.hangup({
+    _terminer(idAppel, {
       'status_code': 302,
       'reason_phrase': 'Moved Temporarily',
       'extraHeaders': ['Contact: <${_uri(cible)}>'],
     });
+  }
+
+  /// Termine la session SIP (BYE, CANCEL ou réponse 3xx–6xx selon l'état).
+  ///
+  /// ⚠️ On n'utilise PAS Call.hangup() de sip_ua : il appelle d'abord
+  /// peerConnection.getLocalStreams(), une ancienne API retirée de Chrome.
+  /// Sur le web, hangup() plantait donc avant d'envoyer le BYE (bug du
+  /// bouton « Raccrocher » pendant une communication). Le micro est libéré
+  /// à la réception de l'état ENDED (voir callStateChanged).
+  void _terminer(String idAppel, [Map<String, dynamic>? options]) {
+    final appel = _appels[idAppel];
+    if (appel == null) {
+      debugPrint('[GA] Fin d\'appel : $idAppel introuvable');
+      return;
+    }
+    try {
+      appel.session.terminate(options);
+    } catch (e) {
+      debugPrint('[GA] Fin d\'appel impossible ($idAppel) : $e');
+    }
   }
 
   @override
