@@ -128,6 +128,54 @@ class _SipTestScreenState extends State<SipTestScreen>
 
   void _raccrocher() => _appel?.hangup();
 
+  static const _messagesRapides = [
+    'Je suis occupé, je vous rappelle plus tard.',
+    'Je suis en réunion, je vous rappelle.',
+    'Je ne peux pas répondre, écrivez-moi.',
+  ];
+
+  void _rejeterAvecMessage(String texte) {
+    final appel = _appel;
+    if (appel == null) return;
+
+    // À lire AVANT le rejet : après, _appel passe à null.
+    final destinataire = appel.remote_identity;
+    try {
+      _sip.sendMessage(
+          'sip:$destinataire@${_ipServeur.text.trim()}', texte);
+      _log('Message envoyé à $destinataire : $texte');
+    } catch (e) {
+      _log('Erreur envoi message : $e');
+    }
+    _rejeter(); // la fonction qui marche déjà
+  }
+
+  void _ouvrirVoletMessages() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text('Rejeter avec un message',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            for (final msg in _messagesRapides)
+              ListTile(
+                leading: const Icon(Icons.message_outlined),
+                title: Text(msg),
+                onTap: () {
+                  Navigator.pop(ctx); // ferme le volet
+                  _rejeterAvecMessage(msg);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ---------------- Événements SIP ----------------
 
   @override
@@ -269,7 +317,9 @@ class _SipTestScreenState extends State<SipTestScreen>
             ),
             const SizedBox(height: 8),
             if (_appelEntrant)
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
                 children: [
                   FilledButton.icon(
                     onPressed: _decrocher,
@@ -277,12 +327,16 @@ class _SipTestScreenState extends State<SipTestScreen>
                     icon: const Icon(Icons.call),
                     label: const Text('Décrocher'),
                   ),
-                  const SizedBox(width: 12),
                   OutlinedButton.icon(
                     onPressed: _rejeter,
                     style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
                     icon: const Icon(Icons.call_end),
                     label: const Text('Rejeter'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _ouvrirVoletMessages,
+                    icon: const Icon(Icons.message),
+                    label: const Text('Message'),
                   ),
                 ],
               )
