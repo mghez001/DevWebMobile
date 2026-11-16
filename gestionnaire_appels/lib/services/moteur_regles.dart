@@ -26,8 +26,9 @@ class MoteurDeRegles {
     if (systeme != null) return systeme;
 
     // 2. Règles de l'utilisateur, de la plus petite priorité à la plus grande.
-    final regles = ctx.regles.where((r) => r.active).toList()
-      ..sort((a, b) => a.priorite.compareTo(b.priorite));
+    final regles =
+        ctx.regles.where((r) => r.active).toList()
+          ..sort((a, b) => a.priorite.compareTo(b.priorite));
 
     for (final regle in regles) {
       if (conditionVerifiee(regle.condition, appel, ctx)) {
@@ -45,7 +46,10 @@ class MoteurDeRegles {
 
   /// Une condition est vraie si TOUS ses critères sont vrais.
   bool conditionVerifiee(
-      ConditionRegle c, AppelEntrant appel, ContexteDecision ctx) {
+    ConditionRegle c,
+    AppelEntrant appel,
+    ContexteDecision ctx,
+  ) {
     return appelantCorrespond(c, appel, ctx) &&
         prefixeCorrespond(c, appel) &&
         jourCorrespond(c, ctx) &&
@@ -78,10 +82,12 @@ class MoteurDeRegles {
   List<Appel> appelsDe(String numero, DateTime depuis, ContexteDecision ctx) {
     final n = normaliserNumero(numero);
     return ctx.historique
-        .where((a) =>
-            a.sens == SensAppel.entrant &&
-            normaliserNumero(a.numero) == n &&
-            a.debut.isAfter(depuis))
+        .where(
+          (a) =>
+              a.sens == SensAppel.entrant &&
+              normaliserNumero(a.numero) == n &&
+              a.debut.isAfter(depuis),
+        )
         .toList();
   }
 
@@ -113,7 +119,10 @@ class MoteurDeRegles {
   ///  - numero   → normaliserNumero(appel.numero) == normaliserNumero(c.numero)
   ///  - masques  → appel.estMasque
   bool appelantCorrespond(
-      ConditionRegle c, AppelEntrant appel, ContexteDecision ctx) {
+    ConditionRegle c,
+    AppelEntrant appel,
+    ContexteDecision ctx,
+  ) {
     switch (c.appelant) {
       case TypeAppelant.tous:
         return true;
@@ -157,16 +166,60 @@ class MoteurDeRegles {
   ///    des participants d'un événement en cours.
   ///  - aucun des deux → true.
   bool calendrierCorrespond(
-      ConditionRegle c, AppelEntrant appel, ContexteDecision ctx) {
+    ConditionRegle c,
+    AppelEntrant appel,
+    ContexteDecision ctx,
+  ) {
     if (!c.siCalendrierOccupe && !c.siParticipantEvenement) return true;
-    return false; // TODO
+
+    final enCours = evenementsOccupesEnCours(ctx);
+
+    // Il faut au moins un rendez-vous en cours.
+    if (c.siCalendrierOccupe && enCours.isEmpty) return false;
+
+    // L'appelant participe-t-il à mon rendez-vous ?
+    if (c.siParticipantEvenement) {
+      final numero = normaliserNumero(appel.numero);
+      final participe = enCours.any(
+        (e) => e.participants.map(normaliserNumero).contains(numero),
+      );
+      if (!participe) return false;
+    }
+    return true;
   }
+
+  /// Le rendez-vous en cours qui finit le plus tard (ou null).
+  EvenementCalendrier? evenementEnCours(ContexteDecision ctx) {
+    final enCours = evenementsOccupesEnCours(ctx);
+    if (enCours.isEmpty) return null;
+    enCours.sort((a, b) => b.fin.compareTo(a.fin));
+    return enCours.first;
+  }
+
+  /// Règle prête : en rendez-vous → messagerie + message (pas de redirection).
+  static const regleEnRendezVous = Regle(
+    id: 'en-rendez-vous',
+    nom: 'En rendez-vous',
+    priorite: 5,
+    condition: ConditionRegle(siCalendrierOccupe: true),
+    action: ActionRegle(
+      type: TypeAction.messagerie,
+      envoyerMessageSip: true,
+      messageTexte:
+          'Bonjour, je suis actuellement indisponible. '
+          'Je serai de nouveau disponible à {fin}. '
+          'Je vous rappellerai dès que possible.',
+    ),
+  );
 
   /// TODO(responsable : ______) : « appel répété = urgence ».
   ///  c.appelRepeteDans null → true ; sinon vrai si ce numéro a déjà appelé
   ///  depuis (maintenant - c.appelRepeteDans). Utiliser appelsDe(...).
   bool appelRepeteCorrespond(
-      ConditionRegle c, AppelEntrant appel, ContexteDecision ctx) {
+    ConditionRegle c,
+    AppelEntrant appel,
+    ContexteDecision ctx,
+  ) {
     if (c.appelRepeteDans == null) return true;
     return false; // TODO
   }
@@ -175,7 +228,10 @@ class MoteurDeRegles {
   ///  c.nbAppelsMin ou c.nbAppelsFenetre null → true ; sinon vrai si
   ///  (appels passés de ce numéro dans la fenêtre + celui-ci) >= nbAppelsMin.
   bool seuilAppelsCorrespond(
-      ConditionRegle c, AppelEntrant appel, ContexteDecision ctx) {
+    ConditionRegle c,
+    AppelEntrant appel,
+    ContexteDecision ctx,
+  ) {
     if (c.nbAppelsMin == null || c.nbAppelsFenetre == null) return true;
     return false; // TODO
   }
@@ -190,7 +246,25 @@ class MoteurDeRegles {
   ///  Utiliser action.copyWith(messageTexte: ...). Ne pas oublier
   ///  action.ensuite si on veut aussi le traiter.
   ActionRegle resoudreTexte(
-      ActionRegle action, AppelEntrant appel, ContexteDecision ctx) {
-    return action; // TODO
+    ActionRegle action,
+    AppelEntrant appel,
+    ContexteDecision ctx,
+  ) {
+    final texte = action.messageTexte;
+    if (texte == null) return action;
+
+    final evenement = evenementEnCours(ctx);
+    final fin =
+        evenement == null
+            ? 'plus tard'
+            : '${evenement.fin.hour.toString().padLeft(2, '0')}:'
+                '${evenement.fin.minute.toString().padLeft(2, '0')}';
+    final contact = trouverContact(appel.numero, ctx.contacts);
+
+    return action.copyWith(
+      messageTexte: texte
+          .replaceAll('{fin}', fin)
+          .replaceAll('{nom}', contact?.nom ?? 'inconnu'),
+    );
   }
 }
