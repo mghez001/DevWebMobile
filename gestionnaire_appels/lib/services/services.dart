@@ -23,9 +23,20 @@ class Services {
 
   static final RegleRepository regles = RegleRepositoryMemoire([
     MoteurDeRegles.regleNumerosIndesirables(),
+    MoteurDeRegles.regleVacances,
+    MoteurDeRegles.regleEnRendezVous,
+    MoteurDeRegles.regleHorsHoraires(),
   ]);
 
-  static final CalendrierRepository calendrier = CalendrierRepositoryMemoire();
+  // ⚠️ TEST : faux cours en ce moment (à enlever avant de pousser)
+  static final CalendrierRepository calendrier = CalendrierRepositoryMemoire([
+    EvenementCalendrier(
+      id: 'test',
+      titre: 'Vacances (TEST)',
+      debut: DateTime.now().subtract(const Duration(days: 2)),
+      fin: DateTime.now().add(const Duration(days: 5)),
+    ),
+  ]);
 
   static final JournalRepository journal = JournalRepositoryMemoire();
 
