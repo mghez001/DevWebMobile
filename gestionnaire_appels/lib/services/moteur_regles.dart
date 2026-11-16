@@ -69,6 +69,7 @@ class MoteurDeRegles {
         prefixeCorrespond(c, appel) &&
         jourCorrespond(c, ctx) &&
         plageCorrespond(c, ctx) &&
+        vacancesCorrespond(c, ctx) &&
         calendrierCorrespond(c, appel, ctx) &&
         appelRepeteCorrespond(c, appel, ctx) &&
         seuilAppelsCorrespond(c, appel, ctx);
@@ -134,7 +135,8 @@ class MoteurDeRegles {
     }
 
     // 2. Numéro bloqué temporairement (anti-harcèlement déjà déclenché).
-    final finBlocage = ctx.bloquesJusqua[normaliserNumero(appel.numero)] ??
+    final finBlocage =
+        ctx.bloquesJusqua[normaliserNumero(appel.numero)] ??
         ctx.bloquesJusqua[appel.numero];
     if (finBlocage != null && ctx.maintenant.isBefore(finBlocage)) {
       return Decision(
@@ -165,14 +167,18 @@ class MoteurDeRegles {
 
     // 5. Anti-harcèlement : trop d'appels sans réponse → blocage.
     final sansReponse = nbAppelsSansReponse(
-        appel.numero, ctx.maintenant.subtract(fenetreHarcelement), ctx);
+      appel.numero,
+      ctx.maintenant.subtract(fenetreHarcelement),
+      ctx,
+    );
     if (sansReponse + 1 > seuilHarcelement) {
       return Decision(
         action: ActionRegle(
           type: TypeAction.messagerie,
           bloquerPendant: dureeBlocageHarcelement,
         ),
-        explication: '${sansReponse + 1} appels sans réponse en '
+        explication:
+            '${sansReponse + 1} appels sans réponse en '
             '${fenetreHarcelement.inMinutes} min : bloqué '
             '${dureeBlocageHarcelement.inHours} h',
       );
@@ -184,7 +190,10 @@ class MoteurDeRegles {
   /// Nombre d'appels entrants de ce numéro restés sans réponse depuis
   /// [depuis]. Le compteur repart à zéro dès qu'un appel a été décroché.
   int nbAppelsSansReponse(
-      String numero, DateTime depuis, ContexteDecision ctx) {
+    String numero,
+    DateTime depuis,
+    ContexteDecision ctx,
+  ) {
     final appels = appelsDe(numero, depuis, ctx)
       ..sort((a, b) => a.debut.compareTo(b.debut));
     var compteur = 0;
@@ -249,15 +258,27 @@ class MoteurDeRegles {
 
   /// Préfixes réservés au démarchage commercial en France (ARCEP, 2023).
   static const prefixesDemarchage = [
-    '0162', '0163', '0270', '0271', '0377', '0378',
-    '0424', '0425', '0568', '0569', '0948', '0949',
+    '0162',
+    '0163',
+    '0270',
+    '0271',
+    '0377',
+    '0378',
+    '0424',
+    '0425',
+    '0568',
+    '0569',
+    '0948',
+    '0949',
   ];
 
   /// Crée la règle « numéros indésirables → messagerie ».
   /// À enregistrer dans le RegleRepository ; l'écran Règles permettra
   /// d'ajouter ou de retirer des préfixes (regle.copyWith(condition: …)).
-  static Regle regleNumerosIndesirables(
-      {List<String> prefixes = prefixesDemarchage, int priorite = 0}) {
+  static Regle regleNumerosIndesirables({
+    List<String> prefixes = prefixesDemarchage,
+    int priorite = 0,
+  }) {
     return Regle(
       id: 'numeros-indesirables',
       nom: 'Numéros indésirables',
@@ -272,7 +293,7 @@ class MoteurDeRegles {
   ///  c.jours (1 = lundi … 7 = dimanche).
   bool jourCorrespond(ConditionRegle c, ContexteDecision ctx) {
     if (c.jours == null) return true;
-    return false; // TODO
+    return c.jours!.contains(ctx.maintenant.weekday);
   }
 
   /// TODO(responsable : ______) :
@@ -280,8 +301,61 @@ class MoteurDeRegles {
   ///  (la gestion de minuit est déjà faite dans PlageHoraire.contient).
   bool plageCorrespond(ConditionRegle c, ContexteDecision ctx) {
     if (c.plage == null) return true;
-    return false; // TODO
+    return c.plage!.contient(ctx.maintenant);
   }
+
+  /// Mots qui signalent des vacances dans le titre d'un événement.
+  static const motsVacances = ['vacances', 'congé', 'conge', 'holiday'];
+
+  /// Les événements « vacances » de l'agenda en cours aujourd'hui.
+  List<EvenementCalendrier> vacancesEnCours(ContexteDecision ctx) {
+    return ctx.evenements.where((e) {
+      final titre = e.titre.toLowerCase();
+      return motsVacances.any(titre.contains) && e.enCours(ctx.maintenant);
+    }).toList();
+  }
+
+  /// Vacances : vrai seulement si un événement « vacances » est en cours.
+  bool vacancesCorrespond(ConditionRegle c, ContexteDecision ctx) {
+    if (!c.siVacances) return true;
+    return vacancesEnCours(ctx).isNotEmpty;
+  }
+
+  /// Règle prête : hors horaires (18h → 9h) → messagerie + message.
+  static Regle regleHorsHoraires({
+    Heure debut = const Heure(18, 0),
+    Heure fin = const Heure(9, 0),
+  }) {
+    return Regle(
+      id: 'hors-horaires',
+      nom: 'Hors horaires',
+      priorite: 20,
+      condition: ConditionRegle(plage: PlageHoraire(debut, fin)),
+      action: const ActionRegle(
+        type: TypeAction.messagerie,
+        envoyerMessageSip: true,
+        messageTexte:
+            'Bonjour, je ne suis pas disponible en ce moment. '
+            'Je vous rappellerai à partir de 9h.',
+      ),
+    );
+  }
+
+  /// Règle prête : en vacances (d'après l'agenda) → messagerie + message.
+  static const regleVacances = Regle(
+    id: 'vacances',
+    nom: 'Vacances',
+    priorite: 3,
+    condition: ConditionRegle(siVacances: true),
+    action: ActionRegle(
+      type: TypeAction.messagerie,
+      envoyerMessageSip: true,
+      messageTexte:
+          'Bonjour, je suis en vacances. '
+          'Je serai de retour le {retour}. '
+          'Laissez-moi un message, je vous rappellerai.',
+    ),
+  );
 
   /// TODO(responsable : ______) :
   ///  - c.siCalendrierOccupe → vrai seulement si un événement « occupé »
@@ -354,12 +428,18 @@ class MoteurDeRegles {
   ///  >= nbAppelsMin. La version par défaut (10 appels / 30 min → 2 h)
   ///  est déjà appliquée dans [reglesSysteme].
   bool seuilAppelsCorrespond(
-      ConditionRegle c, AppelEntrant appel, ContexteDecision ctx) {
+    ConditionRegle c,
+    AppelEntrant appel,
+    ContexteDecision ctx,
+  ) {
     final min = c.nbAppelsMin;
     final fenetre = c.nbAppelsFenetre;
     if (min == null || fenetre == null) return true;
     final sansReponse = nbAppelsSansReponse(
-        appel.numero, ctx.maintenant.subtract(fenetre), ctx);
+      appel.numero,
+      ctx.maintenant.subtract(fenetre),
+      ctx,
+    );
     return sansReponse + 1 >= min;
   }
 
@@ -387,10 +467,21 @@ class MoteurDeRegles {
             : '${evenement.fin.hour.toString().padLeft(2, '0')}:'
                 '${evenement.fin.minute.toString().padLeft(2, '0')}';
     final contact = trouverContact(appel.numero, ctx.contacts);
-
+    final vacances = vacancesEnCours(ctx);
+    var retour = 'bientôt';
+    if (vacances.isNotEmpty) {
+      vacances.sort((a, b) => b.fin.compareTo(a.fin));
+      final fin = vacances.first.fin;
+      final aMinuit = fin.hour == 0 && fin.minute == 0;
+      final r = aMinuit ? fin : fin.add(const Duration(days: 1));
+      retour =
+          '${r.day.toString().padLeft(2, '0')}/'
+          '${r.month.toString().padLeft(2, '0')}';
+    }
     return action.copyWith(
       messageTexte: texte
           .replaceAll('{fin}', fin)
+          .replaceAll('{retour}', retour)
           .replaceAll('{nom}', contact?.nom ?? 'inconnu'),
     );
   }

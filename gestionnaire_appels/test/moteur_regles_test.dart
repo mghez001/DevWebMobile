@@ -172,7 +172,73 @@ void main() {
       moteur.decider(appelDe('300'), ctx14h).action.type,
       TypeAction.sonner,
     );
-  }, skip: 'plageCorrespond');
+  });
+
+  // --- QUAND : horaires et vacances  ------------------------
+
+  test('hors horaires : 23h → messagerie, 14h → sonne', () {
+    final horaires = MoteurDeRegles.regleHorsHoraires();
+    final a23h = DateTime(2026, 11, 12, 23);
+    expect(
+      moteur
+          .decider(
+            appelDe('300'),
+            ContexteDecision(maintenant: a23h, regles: [horaires]),
+          )
+          .action
+          .type,
+      TypeAction.messagerie,
+    );
+    expect(
+      moteur
+          .decider(
+            appelDe('300'),
+            ContexteDecision(maintenant: mercredi14h, regles: [horaires]),
+          )
+          .action
+          .type,
+      TypeAction.sonner,
+    );
+  });
+
+  test('vacances dans l\'agenda → messagerie + date de retour', () {
+    final vacances = EvenementCalendrier(
+      id: 'v1',
+      titre: 'Vacances de Noël',
+      debut: DateTime(2026, 12, 20),
+      fin: DateTime(2027, 1, 6),
+      occupe: false,
+    );
+    final noel = DateTime(2026, 12, 25, 10);
+    final d = moteur.decider(
+      appelDe('300'),
+      ContexteDecision(
+        maintenant: noel,
+        evenements: [vacances],
+        regles: [MoteurDeRegles.regleVacances],
+      ),
+    );
+    expect(d.action.type, TypeAction.messagerie);
+    expect(d.action.messageTexte, contains('06/01'));
+  });
+
+  test('un cours n\'est pas des vacances → sonne', () {
+    final cours = EvenementCalendrier(
+      id: 'c1',
+      titre: 'Cours de maths',
+      debut: DateTime(2026, 11, 12, 13, 30),
+      fin: DateTime(2026, 11, 12, 15, 30),
+    );
+    final d = moteur.decider(
+      appelDe('300'),
+      ContexteDecision(
+        maintenant: mercredi14h,
+        evenements: [cours],
+        regles: [MoteurDeRegles.regleVacances],
+      ),
+    );
+    expect(d.action.type, TypeAction.sonner);
+  });
 
   test('en réunion → messagerie avec heure de fin', () {
     final reunion = EvenementCalendrier(
