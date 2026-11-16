@@ -23,7 +23,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
     SipTestScreen(),
   ];
 
-  static const _titres = ['Journal', 'Contacts', 'Clavier', 'Test SIP'];
+  static const _titres = ['Journal', 'Contacts', 'Clavier', 'Téléphone'];
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +38,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
           NavigationDestination(icon: Icon(Icons.history), label: 'Journal'),
           NavigationDestination(icon: Icon(Icons.contacts), label: 'Contacts'),
           NavigationDestination(icon: Icon(Icons.dialpad), label: 'Clavier'),
-          NavigationDestination(icon: Icon(Icons.wifi_calling_3), label: 'SIP'),
+          NavigationDestination(icon: Icon(Icons.wifi_calling_3), label: 'Téléphone'),
         ],
       ),
     );
