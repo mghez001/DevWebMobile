@@ -267,6 +267,9 @@ class ConditionRegle {
   final int? nbAppelsMin;
   final Duration? nbAppelsFenetre;
 
+  /// Seulement si un événement « vacances » de l'agenda est en cours.
+  final bool siVacances;
+
   const ConditionRegle({
     this.appelant = TypeAppelant.tous,
     this.groupe,
@@ -279,6 +282,7 @@ class ConditionRegle {
     this.appelRepeteDans,
     this.nbAppelsMin,
     this.nbAppelsFenetre,
+    this.siVacances = false,
   });
 }
 
@@ -357,8 +361,13 @@ class Regle {
     required this.action,
   });
 
-  Regle copyWith({String? nom, int? priorite, bool? active,
-      ConditionRegle? condition, ActionRegle? action}) {
+  Regle copyWith({
+    String? nom,
+    int? priorite,
+    bool? active,
+    ConditionRegle? condition,
+    ActionRegle? action,
+  }) {
     return Regle(
       id: id,
       nom: nom ?? this.nom,
@@ -415,11 +424,7 @@ class Decision {
   /// Explication lisible, affichée dans le journal (ex. « Inconnu la nuit »).
   final String explication;
 
-  const Decision({
-    required this.action,
-    this.regle,
-    required this.explication,
-  });
+  const Decision({required this.action, this.regle, required this.explication});
 
   static const parDefaut = Decision(
     action: ActionRegle(type: TypeAction.sonner),
