@@ -13,14 +13,29 @@ void main() {
 
   // --- Données de test ------------------------------------------------
   const lucas = Contact(
-      id: 'c1', nom: 'Lucas', numero: '300', groupes: {GroupeContact.pro});
+    id: 'c1',
+    nom: 'Lucas',
+    numero: '300',
+    groupes: {GroupeContact.pro},
+  );
   const maman = Contact(
-      id: 'c2', nom: 'Maman', numero: '301', groupes: {GroupeContact.favori});
+    id: 'c2',
+    nom: 'Maman',
+    numero: '301',
+    groupes: {GroupeContact.favori},
+  );
   const spammeur = Contact(
-      id: 'c3', nom: 'Spam', numero: '999', groupes: {GroupeContact.bloque});
+    id: 'c3',
+    nom: 'Spam',
+    numero: '999',
+    groupes: {GroupeContact.bloque},
+  );
 
   AppelEntrant appelDe(String numero) => AppelEntrant(
-      idAppel: 'id-$numero', numero: numero, recuLe: DateTime(2026, 11, 12, 14));
+    idAppel: 'id-$numero',
+    numero: numero,
+    recuLe: DateTime(2026, 11, 12, 14),
+  );
 
   final mercredi14h = DateTime(2026, 11, 12, 14, 0); // un mercredi
   final mercredi23h = DateTime(2026, 11, 12, 23, 0);
@@ -31,7 +46,9 @@ void main() {
     priorite: 10,
     condition: ConditionRegle(appelant: TypeAppelant.inconnus),
     action: ActionRegle(
-        type: TypeAction.messagerie, messageTexte: 'Laissez-moi un message'),
+      type: TypeAction.messagerie,
+      messageTexte: 'Laissez-moi un message',
+    ),
   );
 
   const nuit = Regle(
@@ -46,24 +63,34 @@ void main() {
 
   test('sans règle : sonnerie normale', () {
     final d = moteur.decider(
-        appelDe('300'), ContexteDecision(maintenant: mercredi14h));
+      appelDe('300'),
+      ContexteDecision(maintenant: mercredi14h),
+    );
     expect(d.action.type, TypeAction.sonner);
     expect(d.regle, isNull);
   });
 
   test('règle « tous » : la plus petite priorité gagne', () {
     const rejetTous = Regle(
-        id: 'a', nom: 'Rejet', priorite: 5,
-        condition: ConditionRegle(),
-        action: ActionRegle(type: TypeAction.rejeter));
+      id: 'a',
+      nom: 'Rejet',
+      priorite: 5,
+      condition: ConditionRegle(),
+      action: ActionRegle(type: TypeAction.rejeter),
+    );
     const messagerieTous = Regle(
-        id: 'b', nom: 'Messagerie', priorite: 1,
-        condition: ConditionRegle(),
-        action: ActionRegle(type: TypeAction.messagerie));
+      id: 'b',
+      nom: 'Messagerie',
+      priorite: 1,
+      condition: ConditionRegle(),
+      action: ActionRegle(type: TypeAction.messagerie),
+    );
     final d = moteur.decider(
       appelDe('300'),
       ContexteDecision(
-          maintenant: mercredi14h, regles: [rejetTous, messagerieTous]),
+        maintenant: mercredi14h,
+        regles: [rejetTous, messagerieTous],
+      ),
     );
     expect(d.regle?.nom, 'Messagerie');
   });
@@ -71,12 +98,19 @@ void main() {
   test('une règle désactivée est ignorée', () {
     final d = moteur.decider(
       appelDe('300'),
-      ContexteDecision(maintenant: mercredi14h, regles: [
-        const Regle(
-            id: 'a', nom: 'Off', priorite: 1, active: false,
+      ContexteDecision(
+        maintenant: mercredi14h,
+        regles: [
+          const Regle(
+            id: 'a',
+            nom: 'Off',
+            priorite: 1,
+            active: false,
             condition: ConditionRegle(),
-            action: ActionRegle(type: TypeAction.rejeter)),
-      ]),
+            action: ActionRegle(type: TypeAction.rejeter),
+          ),
+        ],
+      ),
     );
     expect(d.action.type, TypeAction.sonner);
   });
@@ -99,9 +133,10 @@ void main() {
     final d = moteur.decider(
       appelDe('555'),
       ContexteDecision(
-          maintenant: mercredi14h,
-          contacts: [lucas, maman],
-          regles: [inconnusMessagerie]),
+        maintenant: mercredi14h,
+        contacts: [lucas, maman],
+        regles: [inconnusMessagerie],
+      ),
     );
     expect(d.action.type, TypeAction.messagerie);
   }, skip: 'appelantCorrespond : cas inconnus');
@@ -110,9 +145,10 @@ void main() {
     final d = moteur.decider(
       appelDe('300'),
       ContexteDecision(
-          maintenant: mercredi14h,
-          contacts: [lucas],
-          regles: [inconnusMessagerie]),
+        maintenant: mercredi14h,
+        contacts: [lucas],
+        regles: [inconnusMessagerie],
+      ),
     );
     expect(d.action.type, TypeAction.sonner);
   });
@@ -128,36 +164,50 @@ void main() {
   test('nuit → messagerie à 23h, sonne à 14h', () {
     final ctx23h = ContexteDecision(maintenant: mercredi23h, regles: [nuit]);
     final ctx14h = ContexteDecision(maintenant: mercredi14h, regles: [nuit]);
-    expect(moteur.decider(appelDe('300'), ctx23h).action.type,
-        TypeAction.messagerie);
-    expect(moteur.decider(appelDe('300'), ctx14h).action.type,
-        TypeAction.sonner);
+    expect(
+      moteur.decider(appelDe('300'), ctx23h).action.type,
+      TypeAction.messagerie,
+    );
+    expect(
+      moteur.decider(appelDe('300'), ctx14h).action.type,
+      TypeAction.sonner,
+    );
   }, skip: 'plageCorrespond');
 
   test('en réunion → messagerie avec heure de fin', () {
     final reunion = EvenementCalendrier(
-        id: 'e1', titre: 'Réunion',
-        debut: DateTime(2026, 11, 12, 13, 30),
-        fin: DateTime(2026, 11, 12, 15, 30));
+      id: 'e1',
+      titre: 'Réunion',
+      debut: DateTime(2026, 11, 12, 13, 30),
+      fin: DateTime(2026, 11, 12, 15, 30),
+    );
     const enReunion = Regle(
-      id: 'r3', nom: 'En réunion', priorite: 5,
+      id: 'r3',
+      nom: 'En réunion',
+      priorite: 5,
       condition: ConditionRegle(siCalendrierOccupe: true),
       action: ActionRegle(
-          type: TypeAction.messagerie,
-          messageTexte: 'En réunion jusqu\'à {fin}'),
+        type: TypeAction.messagerie,
+        messageTexte: 'En réunion jusqu\'à {fin}',
+      ),
     );
     final d = moteur.decider(
       appelDe('300'),
       ContexteDecision(
-          maintenant: mercredi14h, evenements: [reunion], regles: [enReunion]),
+        maintenant: mercredi14h,
+        evenements: [reunion],
+        regles: [enReunion],
+      ),
     );
     expect(d.action.type, TypeAction.messagerie);
     expect(d.action.messageTexte, 'En réunion jusqu\'à 15:30');
-  }, skip: 'calendrierCorrespond + resoudreTexte');
+  });
 
   test('appel répété dans les 3 min → sonne (urgence)', () {
     const urgence = Regle(
-      id: 'r4', nom: 'Appel répété', priorite: 1,
+      id: 'r4',
+      nom: 'Appel répété',
+      priorite: 1,
       condition: ConditionRegle(appelRepeteDans: Duration(minutes: 3)),
       action: ActionRegle(type: TypeAction.sonner),
     );
@@ -168,9 +218,12 @@ void main() {
         regles: [urgence, nuit],
         historique: [
           Appel(
-              id: 'h1', sens: SensAppel.entrant, numero: '555',
-              debut: mercredi23h.subtract(const Duration(minutes: 2)),
-              issue: IssueAppel.messagerie),
+            id: 'h1',
+            sens: SensAppel.entrant,
+            numero: '555',
+            debut: mercredi23h.subtract(const Duration(minutes: 2)),
+            issue: IssueAppel.messagerie,
+          ),
         ],
       ),
     );
