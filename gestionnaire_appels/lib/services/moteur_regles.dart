@@ -210,7 +210,7 @@ class MoteurDeRegles {
   //  CONDITIONS — À COMPLÉTER
   // ===================================================================
 
-  /// TODO(responsable : ______) : compléter les cas manquants.
+  /// Qui appelle ?
   ///  - tous     → true (déjà fait)
   ///  - inconnus → numéro absent des contacts (et pas masqué)
   ///  - contacts → numéro présent dans les contacts
@@ -226,11 +226,21 @@ class MoteurDeRegles {
       case TypeAppelant.tous:
         return true;
       case TypeAppelant.inconnus:
+        return !appel.estMasque &&
+            trouverContact(appel.numero, ctx.contacts) == null;
       case TypeAppelant.contacts:
+        return trouverContact(appel.numero, ctx.contacts) != null;
       case TypeAppelant.groupe:
+        final groupe = c.groupe;
+        if (groupe == null) return false;
+        return trouverContact(appel.numero, ctx.contacts)?.estDans(groupe) ??
+            false;
       case TypeAppelant.numero:
+        final numero = c.numero;
+        if (numero == null) return false;
+        return normaliserNumero(appel.numero) == normaliserNumero(numero);
       case TypeAppelant.masques:
-        return false; // TODO
+        return appel.estMasque;
     }
   }
 

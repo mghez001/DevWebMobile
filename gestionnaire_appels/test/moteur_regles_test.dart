@@ -139,7 +139,7 @@ void main() {
       ),
     );
     expect(d.action.type, TypeAction.messagerie);
-  }, skip: 'appelantCorrespond : cas inconnus');
+  });
 
   test('contact connu → sonne malgré la règle « inconnus »', () {
     final d = moteur.decider(
@@ -295,4 +295,52 @@ void main() {
     );
     expect(d.regle?.nom, 'Appel répété');
   }, skip: 'appelRepeteCorrespond');
+
+  group('appelantCorrespond', () {
+    final ctx = ContexteDecision(
+      maintenant: mercredi14h,
+      contacts: [lucas, maman],
+    );
+    bool correspond(ConditionRegle c, String numero) =>
+        moteur.appelantCorrespond(c, appelDe(numero), ctx);
+
+    test('inconnus : numéro absent des contacts, pas masqué', () {
+      const c = ConditionRegle(appelant: TypeAppelant.inconnus);
+      expect(correspond(c, '555'), isTrue);
+      expect(correspond(c, '300'), isFalse);
+      expect(correspond(c, 'anonymous'), isFalse);
+    });
+
+    test('contacts : n importe quel contact connu', () {
+      const c = ConditionRegle(appelant: TypeAppelant.contacts);
+      expect(correspond(c, '300'), isTrue);
+      expect(correspond(c, '555'), isFalse);
+    });
+
+    test('groupe : contact présent et dans le groupe', () {
+      const pro = ConditionRegle(
+        appelant: TypeAppelant.groupe,
+        groupe: GroupeContact.pro,
+      );
+      expect(correspond(pro, '300'), isTrue); // Lucas (pro)
+      expect(correspond(pro, '301'), isFalse); // Maman (favori)
+      expect(correspond(pro, '555'), isFalse); // inconnu
+      expect(
+        correspond(const ConditionRegle(appelant: TypeAppelant.groupe), '300'),
+        isFalse,
+      ); // groupe non renseigné
+    });
+
+    test('numero : comparaison après normalisation', () {
+      const c = ConditionRegle(appelant: TypeAppelant.numero, numero: '300');
+      expect(correspond(c, '300'), isTrue);
+      expect(correspond(c, '301'), isFalse);
+    });
+
+    test('masques : numéro masqué ou anonyme', () {
+      const c = ConditionRegle(appelant: TypeAppelant.masques);
+      expect(correspond(c, 'anonymous'), isTrue);
+      expect(correspond(c, '300'), isFalse);
+    });
+  });
 }

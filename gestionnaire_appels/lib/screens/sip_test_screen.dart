@@ -55,7 +55,7 @@ class _SipTestScreenState extends State<SipTestScreen> {
       ),
       Services.sip.etatAppels.listen(_suivreEtat),
       Services.sipUa.messagesRecus.listen(
-        (m) => _message('Message de ${m.$1} : ${m.$2}'),
+        (m) => _message('Message de ${m.numero} : ${m.texte}'),
       ),
     ]);
   }

@@ -29,15 +29,7 @@ class Services {
     MoteurDeRegles.regleHorsHoraires(),
   ]);
 
-  // ⚠️ TEST : faux cours en ce moment (à enlever avant de pousser)
-  static final CalendrierRepository calendrier = CalendrierRepositoryMemoire([
-    EvenementCalendrier(
-      id: 'test',
-      titre: 'Vacances (TEST)',
-      debut: DateTime.now().subtract(const Duration(days: 2)),
-      fin: DateTime.now().add(const Duration(days: 5)),
-    ),
-  ]);
+  static final CalendrierRepository calendrier = CalendrierRepositoryMemoire();
 
   static final JournalRepository journal = JournalRepositoryMemoire();
 
