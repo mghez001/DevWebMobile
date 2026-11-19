@@ -27,6 +27,9 @@ class _AppelEntrantScreenState extends State<AppelEntrantScreen>
     duration: const Duration(milliseconds: 1800),
   )..repeat();
 
+  /// Le panneau « Refuser avec un message » est-il ouvert ?
+  bool _choixMessage = false;
+
   @override
   void dispose() {
     _ondes.dispose();
@@ -164,8 +167,7 @@ class _AppelEntrantScreenState extends State<AppelEntrantScreen>
               child: _PetitBouton(
                 icone: Icons.sms_outlined,
                 libelle: 'Message rapide',
-                // TODO(équipe) : envoyer un message rapide à l'appelant.
-                onTap: () {},
+                onTap: () => setState(() => _choixMessage = !_choixMessage),
               ),
             ),
             Positioned(
@@ -178,6 +180,16 @@ class _AppelEntrantScreenState extends State<AppelEntrantScreen>
                 onTap: () {},
               ),
             ),
+            if (_choixMessage)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 96,
+                child: _VoletMessages(
+                  onChoisi: Services.etat.refuserAvecMessage,
+                  onFermer: () => setState(() => _choixMessage = false),
+                ),
+              ),
           ],
         ),
       ),
@@ -281,6 +293,69 @@ class _PetitBouton extends StatelessWidget {
         Text(libelle,
             style: const TextStyle(color: Colors.white60, fontSize: 12)),
       ],
+    );
+  }
+}
+
+/// Panneau « Refuser avec un message » (pas de dialogue possible ici,
+/// l'écran est au-dessus du Navigator).
+class _VoletMessages extends StatelessWidget {
+  const _VoletMessages({required this.onChoisi, required this.onFermer});
+
+  final void Function(String texte) onChoisi;
+  final VoidCallback onFermer;
+
+  static const _messages = [
+    'Je suis occupé, je vous rappelle plus tard.',
+    'Je suis en réunion, je vous rappelle.',
+    'Je ne peux pas répondre, écrivez-moi.',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(left: 16),
+                child: Text(
+                  'Refuser avec un message',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: onFermer,
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+          for (final texte in _messages)
+            InkWell(
+              onTap: () => onChoisi(texte),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.sms_outlined, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(texte)),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
