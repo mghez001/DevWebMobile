@@ -22,6 +22,9 @@ abstract class SipService {
   /// Changements d'état des appels (sonne, en cours, terminé…).
   Stream<EtatAppel> get etatAppels;
 
+  /// Un événement par message texte SIP (MESSAGE) reçu.
+  Stream<MessageRecu> get messagesRecus;
+
   Future<void> connecter(CompteSip compte);
   Future<void> deconnecter();
 

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:sip_ua/sip_ua.dart';
 
@@ -25,6 +25,8 @@ class SipServiceUa implements SipService, SipUaHelperListener {
   final _etatConnexion = StreamController<EtatConnexion>.broadcast();
   final _appelsEntrants = StreamController<AppelEntrant>.broadcast();
   final _etatAppels = StreamController<EtatAppel>.broadcast();
+  final _messagesRecus = StreamController<MessageRecu>.broadcast();
+  int _compteurMessages = 0;
 
   /// Appels en cours, par identifiant.
   final Map<String, Call> _appels = {};
@@ -59,9 +61,8 @@ class SipServiceUa implements SipService, SipUaHelperListener {
   @override
   Stream<EtatAppel> get etatAppels => _etatAppels.stream;
 
-  /// Messages écrits reçus : (numéro de l'expéditeur, texte).
-  final _messagesRecus = StreamController<(String, String)>.broadcast();
-  Stream<(String, String)> get messagesRecus => _messagesRecus.stream;
+  @override
+  Stream<MessageRecu> get messagesRecus => _messagesRecus.stream;
 
   // -------------------------------------------------------------------
   //  Connexion
@@ -105,6 +106,8 @@ class SipServiceUa implements SipService, SipUaHelperListener {
     if (compte == null) throw StateError('Pas connecté au serveur SIP');
 
     final micro = await _ouvrirMicro();
+    // On garde une référence locale : sip_ua signale l'appel (CALL_INITIATION)
+    // PENDANT _helper.call, et callStateChanged remet _prochainSortant à null.
     final attente = Completer<String>();
     _prochainSortant = attente;
     final ok = await _helper.call(
@@ -128,13 +131,11 @@ class SipServiceUa implements SipService, SipUaHelperListener {
   }
 
   @override
-  Future<void> raccrocher(String idAppel) async {
-    _appels[idAppel]?.hangup();
-  }
+  Future<void> raccrocher(String idAppel) async => _terminer(idAppel);
 
   @override
   Future<void> rejeter(String idAppel, {int code = 603, String? raison}) async {
-    _appels[idAppel]?.hangup({
+    _terminer(idAppel, {
       'status_code': code,
       if (raison != null) 'reason_phrase': raison,
     });
@@ -142,11 +143,31 @@ class SipServiceUa implements SipService, SipUaHelperListener {
 
   @override
   Future<void> rediriger(String idAppel, String cible) async {
-    _appels[idAppel]?.hangup({
+    _terminer(idAppel, {
       'status_code': 302,
       'reason_phrase': 'Moved Temporarily',
       'extraHeaders': ['Contact: <${_uri(cible)}>'],
     });
+  }
+
+  /// Termine la session SIP (BYE, CANCEL ou réponse 3xx–6xx selon l'état).
+  ///
+  /// ⚠️ On n'utilise PAS Call.hangup() de sip_ua : il appelle d'abord
+  /// peerConnection.getLocalStreams(), une ancienne API retirée de Chrome.
+  /// Sur le web, hangup() plantait donc avant d'envoyer le BYE (bug du
+  /// bouton « Raccrocher » pendant une communication). Le micro est libéré
+  /// à la réception de l'état ENDED (voir callStateChanged).
+  void _terminer(String idAppel, [Map<String, dynamic>? options]) {
+    final appel = _appels[idAppel];
+    if (appel == null) {
+      debugPrint('[GA] Fin d\'appel : $idAppel introuvable');
+      return;
+    }
+    try {
+      appel.session.terminate(options);
+    } catch (e) {
+      debugPrint('[GA] Fin d\'appel impossible ($idAppel) : $e');
+    }
   }
 
   @override
@@ -248,20 +269,20 @@ class SipServiceUa implements SipService, SipUaHelperListener {
 
   @override
   void onNewMessage(SIPMessageRequest msg) {
-    // On ignore les messages que NOUS envoyons, on garde ceux qu'on REÇOIT.
-    if (msg.originator.toString().contains('local')) return;
-
-    final dynamic requete = msg.request;
-    var texte = '';
-    var expediteur = '?';
-    try {
-      texte = requete.body ?? '';
-    } catch (_) {}
-    try {
-      expediteur = requete.from.uri.user ?? '?';
-    } catch (_) {}
-
-    _messagesRecus.add((expediteur, texte));
+    // sip_ua signale aussi les messages qu'on envoie : on ne garde que
+    // ceux qui arrivent.
+    if (msg.originator != Originator.remote) return;
+    final de = msg.message?.remote_identity;
+    final texte = (msg.request?.body as String?)?.trim() ?? '';
+    debugPrint('[GA] SIP message reçu de ${de?.uri?.user} : $texte');
+    if (texte.isEmpty) return;
+    _messagesRecus.add(MessageRecu(
+      id: 'msg-${DateTime.now().microsecondsSinceEpoch}-${_compteurMessages++}',
+      numero: normaliserNumero(de?.uri?.user ?? ''),
+      nomAffiche: de?.display_name,
+      texte: texte,
+      recuLe: DateTime.now(),
+    ));
   }
 
   @override

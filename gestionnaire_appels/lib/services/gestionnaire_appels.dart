@@ -23,16 +23,21 @@ class GestionnaireAppels {
     required this.regles,
     required this.calendrier,
     required this.journal,
+    MessageRepository? messages,
     this.moteur = const MoteurDeRegles(),
     this.cibleMessagerie = 'vm400',
     DateTime Function()? horloge,
-  }) : _horloge = horloge ?? DateTime.now;
+  })  : messages = messages ?? MessageRepositoryMemoire(),
+        _horloge = horloge ?? DateTime.now;
 
   final SipService sip;
   final ContactRepository contacts;
   final RegleRepository regles;
   final CalendrierRepository calendrier;
   final JournalRepository journal;
+
+  /// Messages texte reçus (onglet « Messages »).
+  final MessageRepository messages;
   final MoteurDeRegles moteur;
 
   /// Extension Asterisk de la messagerie vocale (dialplan : VoiceMail).
@@ -43,16 +48,21 @@ class GestionnaireAppels {
 
   final _aSonner = StreamController<AppelEntrant>.broadcast();
   final _decisions = StreamController<(AppelEntrant, Decision)>.broadcast();
+  final _nouveauxMessages = StreamController<MessageRecu>.broadcast();
 
   /// Appels qui ont sonné et attendent une réponse : id → (appel, décision).
   final Map<String, (AppelEntrant, Decision)> _enAttente = {};
   final Set<String> _decroches = {};
   final Map<String, DateTime> _debutCommunication = {};
   final Map<String, Timer> _minuteurs = {};
+
+  /// Appels sortants en cours : id → (numéro, début).
+  final Map<String, (String, DateTime)> _sortants = {};
   final Map<String, DateTime> _bloquesJusqua = {};
 
   StreamSubscription<AppelEntrant>? _abonnementAppels;
   StreamSubscription<EtatAppel>? _abonnementEtats;
+  StreamSubscription<MessageRecu>? _abonnementMessages;
 
   // ------------------------------------------------------------------
   //  API pour le front
@@ -64,21 +74,34 @@ class GestionnaireAppels {
   /// Toutes les décisions prises (utile pour déboguer / afficher un toast).
   Stream<(AppelEntrant, Decision)> get decisions => _decisions.stream;
 
+  /// Chaque message reçu, une fois enregistré (pour afficher un toast).
+  Stream<MessageRecu> get nouveauxMessages => _nouveauxMessages.stream;
+
   void demarrer() {
     _abonnementAppels = sip.appelsEntrants.listen(_traiterAppel);
     _abonnementEtats = sip.etatAppels.listen(_suivreEtat);
+    _abonnementMessages = sip.messagesRecus.listen((message) async {
+      await messages.ajouter(message);
+      _nouveauxMessages.add(message);
+    });
   }
 
   Future<void> arreter() async {
     await _abonnementAppels?.cancel();
     await _abonnementEtats?.cancel();
+    await _abonnementMessages?.cancel();
     for (final m in _minuteurs.values) {
       m.cancel();
     }
     _minuteurs.clear();
   }
 
-  Future<String> appeler(String numero) => sip.appeler(numero);
+  /// Appel sortant (il sera ajouté au journal à la fin de l'appel).
+  Future<String> appeler(String numero) async {
+    final id = await sip.appeler(numero);
+    _sortants[id] = (normaliserNumero(numero), _horloge());
+    return id;
+  }
   Future<void> decrocher(String idAppel) => sip.decrocher(idAppel);
   Future<void> raccrocher(String idAppel) => sip.raccrocher(idAppel);
 
@@ -89,6 +112,24 @@ class GestionnaireAppels {
     await sip.rejeter(idAppel);
     if (enAttente != null) {
       await _journaliser(enAttente.$1, IssueAppel.rejete, 'Rejet manuel');
+    }
+  }
+
+  /// Rejet manuel avec message (volet « Répondre par message »).
+  Future<void> rejeterAvecMessage(String idAppel, String texte) async {
+    final enAttente = _enAttente.remove(idAppel);
+    _annulerMinuteur(idAppel);
+    try {
+      if (enAttente != null) {
+        await sip.envoyerMessage(enAttente.$1.numero, texte);
+      }
+    } finally {
+      // Même si l'envoi échoue, l'appel doit être terminé.
+      await sip.rejeter(idAppel, code: 486, raison: 'Occupé');
+    }
+    if (enAttente != null) {
+      await _journaliser(
+          enAttente.$1, IssueAppel.rejete, 'Message rapide : $texte');
     }
   }
 
@@ -198,14 +239,35 @@ class GestionnaireAppels {
         _annulerMinuteur(id);
         final repondu = _decroches.remove(id);
         final debut = _debutCommunication.remove(id);
+        final duree =
+            debut == null ? Duration.zero : _horloge().difference(debut);
+
+        // Appel entrant qui a sonné → répondu ou manqué.
         final enAttente = _enAttente.remove(id);
         if (enAttente != null) {
+          final decision = enAttente.$2;
           await _journaliser(
             enAttente.$1,
             repondu ? IssueAppel.repondu : IssueAppel.manque,
-            enAttente.$2.regle?.nom,
-            duree: debut == null ? Duration.zero : _horloge().difference(debut),
+            // Explication du moteur (ex. « Favori (Maman) : sonne toujours »),
+            // sauf pour la sonnerie par défaut qui n'apporte rien.
+            identical(decision, Decision.parDefaut) ? null : decision.explication,
+            duree: duree,
           );
+        }
+
+        // Appel sortant terminé.
+        final sortant = _sortants.remove(id);
+        if (sortant != null) {
+          await journal.ajouter(Appel(
+            id: id,
+            sens: SensAppel.sortant,
+            numero: sortant.$1,
+            nomContact: moteur.trouverContact(sortant.$1, contacts.tous)?.nom,
+            debut: sortant.$2,
+            duree: duree,
+            issue: IssueAppel.emis,
+          ));
         }
     }
   }

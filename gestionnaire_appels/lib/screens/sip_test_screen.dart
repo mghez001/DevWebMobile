@@ -126,10 +126,49 @@ class _SipTestScreenState extends State<SipTestScreen> {
       _message('Appel impossible : $e');
     }
   }
-
   void _message(String texte) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texte)));
+  }
+
+  // ---------------- Réponse par message ----------------
+
+  static const _messagesRapides = [
+    'Je suis occupé, je vous rappelle plus tard.',
+    'Je suis en réunion, je vous rappelle.',
+    'Je ne peux pas répondre, écrivez-moi.',
+  ];
+
+  void _ouvrirVoletMessages(AppelEntrant appel) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text('Rejeter avec un message',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            for (final msg in _messagesRapides)
+              ListTile(
+                leading: const Icon(Icons.message_outlined),
+                title: Text(msg),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    await Services.gestionnaire
+                        .rejeterAvecMessage(appel.idAppel, msg);
+                    _message('Message envoyé à ${appel.numero}');
+                  } catch (e) {
+                    _message('Envoi impossible : $e');
+                  }
+                },
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Contact? _contactDe(String numero) {
@@ -305,8 +344,10 @@ class _SipTestScreenState extends State<SipTestScreen> {
             ),
             Text(appel.numero),
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
               children: [
                 FilledButton.icon(
                   onPressed:
@@ -320,6 +361,11 @@ class _SipTestScreenState extends State<SipTestScreen> {
                   style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
                   icon: const Icon(Icons.call_end),
                   label: const Text('Rejeter'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _ouvrirVoletMessages(appel),
+                  icon: const Icon(Icons.message),
+                  label: const Text('Message'),
                 ),
               ],
             ),

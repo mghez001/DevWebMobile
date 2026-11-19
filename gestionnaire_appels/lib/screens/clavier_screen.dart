@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// Clavier numérique pour composer un numéro.
-/// StatefulWidget car le numéro tapé change.
+import '../theme.dart';
+
+/// Clavier numérique, ouvert en panneau depuis le bouton rond de l'accueil.
 class ClavierScreen extends StatefulWidget {
-  const ClavierScreen({super.key});
+  const ClavierScreen({super.key, required this.onAppeler});
+
+  /// Appelé avec le numéro composé quand on appuie sur le bouton vert.
+  final ValueChanged<String> onAppeler;
 
   @override
   State<ClavierScreen> createState() => _ClavierScreenState();
@@ -12,100 +16,156 @@ class ClavierScreen extends StatefulWidget {
 class _ClavierScreenState extends State<ClavierScreen> {
   String _numero = '';
 
-  // Les touches rangées par ligne
-  static const _lignes = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['*', '0', '#'],
+  static const _touches = [
+    ('1', ''), ('2', 'ABC'), ('3', 'DEF'),
+    ('4', 'GHI'), ('5', 'JKL'), ('6', 'MNO'),
+    ('7', 'PQRS'), ('8', 'TUV'), ('9', 'WXYZ'),
+    ('*', ''), ('0', '+'), ('#', ''),
   ];
 
-  static const double _tailleTouche = 72;
-
-  void _ajouter(String chiffre) => setState(() => _numero += chiffre);
+  void _ajouter(String c) => setState(() => _numero += c);
 
   void _effacer() {
     if (_numero.isEmpty) return;
     setState(() => _numero = _numero.substring(0, _numero.length - 1));
   }
 
-  void _appeler() {
-    if (_numero.isEmpty) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Appel du $_numero…')),
-    );
-  }
-
-  /// Une touche ronde de taille fixe.
-  Widget _touche(String t) {
-    return SizedBox(
-      width: _tailleTouche,
-      height: _tailleTouche,
-      child: OutlinedButton(
-        onPressed: () => _ajouter(t),
-        style: OutlinedButton.styleFrom(
-          shape: const CircleBorder(),
-          padding: EdgeInsets.zero,
-        ),
-        child: Text(t, style: const TextStyle(fontSize: 26)),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Center(
-      // Le clavier ne dépasse jamais 360 px de large, même sur grand écran
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Numéro affiché en haut (prend la place restante)
-            Expanded(
-              child: Center(
-                child: Text(
-                  _numero,
-                  style: Theme.of(context).textTheme.headlineLarge,
-                ),
+            // Poignée
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Couleurs.trait,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            // Les 4 lignes de touches
-            for (final ligne in _lignes)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [for (final t in ligne) _touche(t)],
-                ),
-              ),
-            // Boutons Appeler / Effacer
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 52,
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  const SizedBox(width: _tailleTouche), // case vide à gauche
-                  SizedBox(
-                    width: _tailleTouche,
-                    height: _tailleTouche,
-                    child: FloatingActionButton(
-                      onPressed: _appeler,
-                      backgroundColor: Colors.green,
-                      shape: const CircleBorder(),
-                      child: const Icon(Icons.call, color: Colors.white, size: 32),
+                  const SizedBox(width: 48),
+                  Expanded(
+                    child: Text(
+                      _numero.isEmpty ? 'Composer un numéro' : _numero,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      style: _numero.isEmpty
+                          ? const TextStyle(
+                              fontSize: 18, color: Couleurs.texteDoux)
+                          : const TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 2,
+                              color: Couleurs.texte,
+                              fontFeatures: chiffresFixes,
+                            ),
                     ),
                   ),
                   SizedBox(
-                    width: _tailleTouche,
-                    child: IconButton(
-                      onPressed: _effacer,
-                      icon: const Icon(Icons.backspace_outlined),
-                      iconSize: 28,
-                    ),
+                    width: 48,
+                    child: _numero.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Effacer',
+                            onPressed: _effacer,
+                            icon: const Icon(Icons.backspace_outlined,
+                                color: Couleurs.texteDoux),
+                          ),
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 300),
+              child: GridView.count(
+                crossAxisCount: 3,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.35,
+                children: [
+                  for (final (chiffre, lettres) in _touches)
+                    _Touche(
+                      chiffre: chiffre,
+                      lettres: lettres,
+                      onTap: () => _ajouter(chiffre),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Material(
+              color: Couleurs.vert,
+              shape: const CircleBorder(),
+              elevation: 3,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: _numero.isEmpty ? null : () => widget.onAppeler(_numero),
+                child: const SizedBox(
+                  width: 68,
+                  height: 68,
+                  child: Icon(Icons.call_rounded, color: Colors.white, size: 30),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Touche extends StatelessWidget {
+  const _Touche({
+    required this.chiffre,
+    required this.lettres,
+    required this.onTap,
+  });
+
+  final String chiffre;
+  final String lettres;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Couleurs.fond,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              chiffre,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
+                color: Couleurs.texte,
+              ),
+            ),
+            if (lettres.isNotEmpty)
+              Text(
+                lettres,
+                style: const TextStyle(
+                  fontSize: 9,
+                  letterSpacing: 1.5,
+                  color: Couleurs.texteDoux,
+                ),
+              ),
           ],
         ),
       ),
