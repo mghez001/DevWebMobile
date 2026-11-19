@@ -25,6 +25,8 @@ class SipServiceUa implements SipService, SipUaHelperListener {
   final _etatConnexion = StreamController<EtatConnexion>.broadcast();
   final _appelsEntrants = StreamController<AppelEntrant>.broadcast();
   final _etatAppels = StreamController<EtatAppel>.broadcast();
+  final _messagesRecus = StreamController<MessageRecu>.broadcast();
+  int _compteurMessages = 0;
 
   /// Appels en cours, par identifiant.
   final Map<String, Call> _appels = {};
@@ -58,6 +60,9 @@ class SipServiceUa implements SipService, SipUaHelperListener {
 
   @override
   Stream<EtatAppel> get etatAppels => _etatAppels.stream;
+
+  @override
+  Stream<MessageRecu> get messagesRecus => _messagesRecus.stream;
 
   // -------------------------------------------------------------------
   //  Connexion
@@ -255,7 +260,22 @@ class SipServiceUa implements SipService, SipUaHelperListener {
   }
 
   @override
-  void onNewMessage(SIPMessageRequest msg) {}
+  void onNewMessage(SIPMessageRequest msg) {
+    // sip_ua signale aussi les messages qu'on envoie : on ne garde que
+    // ceux qui arrivent.
+    if (msg.originator != Originator.remote) return;
+    final de = msg.message?.remote_identity;
+    final texte = (msg.request?.body as String?)?.trim() ?? '';
+    debugPrint('[GA] SIP message reçu de ${de?.uri?.user} : $texte');
+    if (texte.isEmpty) return;
+    _messagesRecus.add(MessageRecu(
+      id: 'msg-${DateTime.now().microsecondsSinceEpoch}-${_compteurMessages++}',
+      numero: normaliserNumero(de?.uri?.user ?? ''),
+      nomAffiche: de?.display_name,
+      texte: texte,
+      recuLe: DateTime.now(),
+    ));
+  }
 
   @override
   void onNewNotify(Notify ntf) {}

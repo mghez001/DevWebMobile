@@ -30,12 +30,15 @@ class Services {
 
   static final JournalRepository journal = JournalRepositoryMemoire();
 
+  static final MessageRepository messages = MessageRepositoryMemoire();
+
   static final GestionnaireAppels gestionnaire = GestionnaireAppels(
     sip: sip,
     contacts: contacts,
     regles: regles,
     calendrier: calendrier,
     journal: journal,
+    messages: messages,
     // ⚠️ Seuil abaissé à 3 pour tester l'anti-harcèlement facilement.
     //    Remettre const MoteurDeRegles() (10 appels) pour la version finale.
     moteur: const MoteurDeRegles(seuilHarcelement: 3),

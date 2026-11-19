@@ -57,6 +57,12 @@ dialplan show messages       → l'extension _[345]XX est listée
 Pour suivre un message : `pjsip set logger on`, puis chercher `MessageSend`
 et `SUCCESS` dans la trace.
 
-## Reste à faire
+## Réception côté appli
 
-Réception du message et affichage côté appli.
+- `SipServiceUa.onNewMessage` transforme chaque `MESSAGE` reçu en
+  `MessageRecu` (flux `SipService.messagesRecus`).
+- `GestionnaireAppels` l'enregistre dans `Services.messages`
+  (`MessageRepository`, en mémoire) et le republie sur `nouveauxMessages`.
+- Onglet **Messages** (`messages_screen.dart`) : liste des messages reçus,
+  bouton pour rappeler. Pastille = nombre de non lus.
+- Un bandeau (SnackBar) s'affiche à la réception, avec « Voir ».
