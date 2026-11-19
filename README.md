@@ -7,7 +7,7 @@ le faire sonner, le rejeter, le renvoyer vers un collègue ou la messagerie voca
 **Stack** : Flutter / Dart · [sip_ua](https://github.com/flutter-webrtc/dart-sip-ua) (SIP + WebRTC) · Asterisk 16 (conteneur Docker)
 **Présentation** : mercredi 16 décembre 2026
 
-**Sommaire** : [État](#état-du-projet) · [Démarrage rapide](#démarrage-rapide) · [Reste à faire](#reste-à-faire--cibler-la-démo) · [Architecture](#architecture) · [Parcours d'un appel](#parcours-dun-appel-entrant) · [Moteur de règles](#le-moteur-de-règles) · [Structure](#structure-du-dépôt) · [Tests](#tests) · [Équipe](#travailler-en-équipe)
+**Sommaire** : [État](#état-du-projet) · [Démarrage rapide](#démarrage-rapide) · [Android](#lancer-sur-android) · [Reste à faire](#reste-à-faire--cibler-la-démo) · [Architecture](#architecture) · [Parcours d'un appel](#parcours-dun-appel-entrant) · [Moteur de règles](#le-moteur-de-règles) · [Structure](#structure-du-dépôt) · [Tests](#tests) · [Équipe](#travailler-en-équipe)
 
 ## État du projet
 
@@ -137,6 +137,47 @@ Toujours : **onglet 1 = 400** (celui qui reçoit), **onglet 2 = 500** (celui qui
 | Démarchage | Onglet 2 compose `9400` | Messagerie |
 | Anti-harcèlement | Onglet 2 appelle 400 plusieurs fois sans qu'on décroche | Au 4ᵉ appel (seuil 3 dépassé) : messagerie + numéro bloqué 2 h |
 
+### Lancer sur Android
+
+⏳ **Jamais testé** : la cible du projet est le téléphone, mais tout a été développé dans Chrome.
+Voici ce qu'il faudra faire (à mettre à jour après le premier essai).
+
+**1. Un appareil** : un émulateur (Android Studio → *Device Manager*) ou un vrai téléphone en
+mode développeur. Vérifier avec `flutter devices`, puis :
+
+```bash
+./lancer.sh                       # Asterisk (l'appli web peut rester ouverte en parallèle)
+flutter run -d <id-de-l-appareil> # dans un 2e terminal, depuis gestionnaire_appels/
+```
+
+**2. L'adresse du serveur** : `127.0.0.1` désigne le téléphone lui-même, pas le PC.
+Au démarrage, changer l'IP dans *Paramètres* → *Serveur SIP* :
+
+| Appareil | IP du serveur |
+|---|---|
+| Émulateur Android | `10.0.2.2` (alias du PC hôte) |
+| Vrai téléphone | IP du PC sur le même réseau (`ip a`). eduroam isole les appareils entre eux : passer par le partage de connexion du téléphone |
+
+**3. Le manifeste** (`android/app/src/main/AndroidManifest.xml`) ne déclare aujourd'hui que
+`READ_CONTACTS` et `READ_CALENDAR`. Il manque très probablement :
+
+```xml
+<uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.RECORD_AUDIO"/>
+<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+```
+
+et, si la connexion `ws://` (non chiffrée) est refusée, `android:usesCleartextTraffic="true"`
+sur la balise `<application>`.
+
+**4. Le micro de l'émulateur** est coupé par défaut : *Extended controls* (`…`) → *Microphone* →
+activer *Virtual microphone uses host audio input*.
+
+**Points à vérifier au premier essai** : la connexion SIP (indicateur dans *Paramètres*), un appel
+vers le `100` (écho : micro et audio RTP à travers le NAT de l'émulateur), l'écran d'appel entrant,
+puis un appel entre l'émulateur (400) et un onglet Chrome (500).
+
 ## Reste à faire : cibler la démo
 
 **Principe** : la démo du 16/12 montre 6 ou 7 appels, chacun illustrant une règle de bout en bout.
@@ -161,7 +202,7 @@ la dernière sert à répéter et à enregistrer une **vidéo de secours** de la
 | ----------------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------- |
 | Écran Agenda (ou bouton « données de démo » qui crée un rendez-vous en cours) | Sinon rendez-vous et vacances ne se montrent qu'en modifiant le code | `Services.calendrier` |
 | Tester la redirection vers un collègue (302 → 500)                            | Jamais vérifiée avec Asterisk                                        | —                     |
-| Lancer une fois sur Android (émulateur)                                       | La cible est le téléphone ; tout n'a été testé que dans Chrome       | —                     |
+| Lancer une fois sur Android (émulateur) | La cible est le téléphone ; tout n'a été testé que dans Chrome | [Lancer sur Android](#lancer-sur-android) |
 
 ### P1 : rend la démo plus convaincante
 
