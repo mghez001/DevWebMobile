@@ -1,8 +1,14 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:sip_ua/sip_ua.dart';
+import 'dart:async';
 
-/// Écran de test : se connecter au serveur Asterisk et appeler Linphone.
+import 'package:flutter/material.dart';
+
+import '../models/modeles.dart';
+import '../services/services.dart';
+import '../widgets/fiche_contact.dart';
+
+/// Onglet « Téléphone » : connexion au serveur, appels, et décisions
+/// prises par le moteur de règles pour chaque appel entrant.
+/// Tout passe par Services (SipServiceUa + GestionnaireAppels).
 class SipTestScreen extends StatefulWidget {
   const SipTestScreen({super.key});
 
@@ -10,123 +16,111 @@ class SipTestScreen extends StatefulWidget {
   State<SipTestScreen> createState() => _SipTestScreenState();
 }
 
-class _SipTestScreenState extends State<SipTestScreen>
-    implements SipUaHelperListener {
-  final SIPUAHelper _sip = SIPUAHelper();
-
-  // ⚠️ Mets ici l'IP de ton PC (commande ipconfig)
-  final _ipServeur = TextEditingController(text: '127.0.0.1');
-  final _utilisateur = TextEditingController(text: '400');
-  final _motDePasse = TextEditingController(text: '400');
+class _SipTestScreenState extends State<SipTestScreen> {
+  final _ipServeur =
+      TextEditingController(text: Services.compteParDefaut.serveur);
+  final _utilisateur =
+      TextEditingController(text: Services.compteParDefaut.utilisateur);
+  final _motDePasse =
+      TextEditingController(text: Services.compteParDefaut.motDePasse);
   final _destination = TextEditingController(text: '300');
 
-  final RTCVideoRenderer _sonDistant = RTCVideoRenderer(); // joue la voix reçue
-  MediaStream? _micro;
-  Call? _appel;
+  EtatConnexion _etat = Services.sipUa.etatActuel;
 
-  bool _connecte = false;
-  bool _appelEntrant = false;
-  String _etat = 'Déconnecté';
-  final List<String> _journal = [];
+  /// Appel qui sonne (le moteur a décidé « sonner »).
+  AppelEntrant? _sonne;
+
+  /// Appel en communication (entrant décroché ou sortant).
+  String? _appelEnCours;
+
+  /// Décisions du moteur, la plus récente en premier.
+  final List<(AppelEntrant, Decision, DateTime)> _decisions = [];
+
+  final List<StreamSubscription<dynamic>> _abonnements = [];
 
   @override
   void initState() {
     super.initState();
-    _sonDistant.initialize();
-    _sip.addSipUaHelperListener(this);
+    _abonnements.addAll([
+      Services.sip.etatConnexion.listen((e) => setState(() => _etat = e)),
+      Services.gestionnaire.appelsASonner
+          .listen((a) => setState(() => _sonne = a)),
+      Services.gestionnaire.decisions.listen((d) => setState(
+          () => _decisions.insert(0, (d.$1, d.$2, DateTime.now())))),
+      Services.sip.etatAppels.listen(_suivreEtat),
+    ]);
   }
 
   @override
   void dispose() {
-    _sip.removeSipUaHelperListener(this);
-    _sip.stop();
-    _libererMicro();
-    _sonDistant.dispose();
+    for (final a in _abonnements) {
+      a.cancel();
+    }
     for (final c in [_ipServeur, _utilisateur, _motDePasse, _destination]) {
       c.dispose();
     }
     super.dispose();
   }
 
-  void _log(String texte) {
-    if (!mounted) return;
-    final t = DateTime.now();
-    String deux(int n) => n.toString().padLeft(2, '0');
-    setState(() => _journal.insert(
-        0, '${deux(t.hour)}:${deux(t.minute)}:${deux(t.second)}  $texte'));
+  void _suivreEtat(EtatAppel etat) {
+    setState(() {
+      switch (etat.statut) {
+        case StatutAppel.sonne:
+          break;
+        case StatutAppel.enCours:
+          _appelEnCours = etat.idAppel;
+          if (_sonne?.idAppel == etat.idAppel) _sonne = null;
+        case StatutAppel.termine:
+        case StatutAppel.echec:
+          if (_sonne?.idAppel == etat.idAppel) _sonne = null;
+          if (_appelEnCours == etat.idAppel) _appelEnCours = null;
+      }
+    });
   }
 
   // ---------------- Actions ----------------
 
-  Future<void> _connecter() async {
-    final ip = _ipServeur.text.trim();
-    final user = _utilisateur.text.trim();
+  static const _idNePasDeranger = 'ne-pas-deranger';
 
-    final reglages = UaSettings()
-      ..transportType = TransportType.WS
-      ..webSocketUrl = 'ws://$ip:8088/ws'
-      ..uri = '$user@$ip'
-      ..host = ip
-      ..authorizationUser = user
-      ..password = _motDePasse.text
-      ..displayName = 'Appli Flutter'
-      ..userAgent = 'Gestionnaire appels'
-      ..dtmfMode = DtmfMode.RFC2833
-      ..register = true;
-    reglages.webSocketSettings.allowBadCertificate = true;
-
-    _log('Connexion à ws://$ip:8088/ws avec le compte $user…');
-    await _sip.start(reglages);
+  /// « Ne pas déranger » = une règle utilisateur « tous → messagerie ».
+  /// Les favoris passent quand même (règle système, testée avant).
+  Future<void> _basculerNePasDeranger(bool actif) async {
+    if (actif) {
+      await Services.regles.enregistrer(const Regle(
+        id: _idNePasDeranger,
+        nom: 'Ne pas déranger',
+        priorite: 100,
+        condition: ConditionRegle(),
+        action: ActionRegle(type: TypeAction.messagerie),
+      ));
+    } else {
+      await Services.regles.supprimer(_idNePasDeranger);
+    }
   }
 
-  void _deconnecter() {
-    _sip.stop();
-    setState(() {
-      _connecte = false;
-      _etat = 'Déconnecté';
-    });
-    _log('Déconnecté');
-  }
-
-  Future<MediaStream> _ouvrirMicro() async {
-    return _micro ??= await navigator.mediaDevices
-        .getUserMedia({'audio': true, 'video': false});
-  }
-
-  void _libererMicro() {
-    _micro?.getTracks().forEach((piste) => piste.stop());
-    _micro?.dispose();
-    _micro = null;
-  }
+  Future<void> _connecter() => Services.sip.connecter(CompteSip(
+        serveur: _ipServeur.text.trim(),
+        utilisateur: _utilisateur.text.trim(),
+        motDePasse: _motDePasse.text,
+        nomAffiche: Services.compteParDefaut.nomAffiche,
+      ));
 
   Future<void> _appeler() async {
-    final cible = 'sip:${_destination.text.trim()}@${_ipServeur.text.trim()}';
     try {
-      final micro = await _ouvrirMicro();
-      final ok = await _sip.call(cible, voiceOnly: true, mediaStream: micro);
-      if (!ok) _log("Impossible d'appeler : pas connecté au serveur");
+      final id =
+          await Services.gestionnaire.appeler(_destination.text.trim());
+      setState(() => _appelEnCours = id);
     } catch (e) {
-      _log('Erreur micro : $e');
+      _message('Appel impossible : $e');
     }
   }
-
-  Future<void> _decrocher() async {
-    final appel = _appel;
-    if (appel == null) return;
-    try {
-      final micro = await _ouvrirMicro();
-      appel.answer(_sip.buildCallOptions(true), mediaStream: micro);
-    } catch (e) {
-      _log('Erreur micro : $e');
-    }
+  void _message(String texte) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(texte)));
   }
 
-  /// Rejet avec un code SIP 603 et une raison : c'est ce que fera
-  /// plus tard le filtrage automatique des inconnus.
-  void _rejeter() => _appel?.hangup(
-      {'status_code': 603, 'reason_phrase': 'Laissez-moi un message'});
-
-  void _raccrocher() => _appel?.hangup();
+  // ---------------- Réponse par message ----------------
 
   static const _messagesRapides = [
     'Je suis occupé, je vous rappelle plus tard.',
@@ -134,23 +128,7 @@ class _SipTestScreenState extends State<SipTestScreen>
     'Je ne peux pas répondre, écrivez-moi.',
   ];
 
-  void _rejeterAvecMessage(String texte) {
-    final appel = _appel;
-    if (appel == null) return;
-
-    // À lire AVANT le rejet : après, _appel passe à null.
-    final destinataire = appel.remote_identity;
-    try {
-      _sip.sendMessage(
-          'sip:$destinataire@${_ipServeur.text.trim()}', texte);
-      _log('Message envoyé à $destinataire : $texte');
-    } catch (e) {
-      _log('Erreur envoi message : $e');
-    }
-    _rejeter(); // la fonction qui marche déjà
-  }
-
-  void _ouvrirVoletMessages() {
+  void _ouvrirVoletMessages(AppelEntrant appel) {
     showModalBottomSheet<void>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -165,9 +143,15 @@ class _SipTestScreenState extends State<SipTestScreen>
               ListTile(
                 leading: const Icon(Icons.message_outlined),
                 title: Text(msg),
-                onTap: () {
-                  Navigator.pop(ctx); // ferme le volet
-                  _rejeterAvecMessage(msg);
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    await Services.gestionnaire
+                        .rejeterAvecMessage(appel.idAppel, msg);
+                    _message('Message envoyé à ${appel.numero}');
+                  } catch (e) {
+                    _message('Envoi impossible : $e');
+                  }
                 },
               ),
           ],
@@ -176,108 +160,85 @@ class _SipTestScreenState extends State<SipTestScreen>
     );
   }
 
-  // ---------------- Événements SIP ----------------
-
-  @override
-  void transportStateChanged(TransportState state) {
-    _log('Transport : ${state.state.name}');
-  }
-
-  @override
-  void registrationStateChanged(RegistrationState state) {
-    final ok = state.state == RegistrationStateEnum.REGISTERED;
-    setState(() {
-      _connecte = ok;
-      _etat = ok ? 'Connecté ✅' : 'Non connecté (${state.state?.name})';
-    });
-    _log('Enregistrement : ${state.state?.name}'
-        '${state.cause != null ? ' – ${state.cause}' : ''}');
-  }
-
-  @override
-  void callStateChanged(Call call, CallState state) {
-    switch (state.state) {
-      case CallStateEnum.CALL_INITIATION:
-        final entrant =
-            call.direction.toString().toLowerCase().contains('incoming');
-        setState(() {
-          _appel = call;
-          _appelEntrant = entrant;
-        });
-        _log(entrant
-            ? 'Appel entrant de ${call.remote_identity} 📞'
-            : 'Appel vers ${call.remote_identity}…');
-      case CallStateEnum.PROGRESS:
-        _log('Ça sonne…');
-      case CallStateEnum.CONFIRMED:
-        setState(() => _appelEntrant = false);
-        _log('En communication 🎧');
-      case CallStateEnum.STREAM:
-        if (state.originator.toString().contains('remote')) {
-          _sonDistant.srcObject = state.stream; // on entend l'autre
-        }
-      case CallStateEnum.ENDED:
-      case CallStateEnum.FAILED:
-        _log(state.state == CallStateEnum.FAILED
-            ? 'Échec : ${state.cause?.reason_phrase ?? state.cause?.cause}'
-            : 'Appel terminé');
-        _libererMicro();
-        _sonDistant.srcObject = null;
-        setState(() {
-          _appel = null;
-          _appelEntrant = false;
-        });
-      default:
-        break;
+  Contact? _contactDe(String numero) {
+    final n = normaliserNumero(numero);
+    for (final c in Services.contacts.tous) {
+      if (normaliserNumero(c.numero) == n) return c;
     }
+    return null;
   }
-
-  @override
-  void onNewMessage(SIPMessageRequest msg) {
-    _log('Message reçu : ${msg.request?.body}');
-  }
-
-  @override
-  void onNewNotify(Notify ntf) {}
-
-  @override
-  void onNewReinvite(ReInvite event) {}
-
-  @override
-  void onNewInfo(SipInfo info) {}
 
   // ---------------- Interface ----------------
 
   @override
   Widget build(BuildContext context) {
     final titre = Theme.of(context).textTheme.titleMedium;
+    final connecte = _etat == EtatConnexion.connecte;
 
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 500),
+        constraints: const BoxConstraints(maxWidth: 520),
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text('1. Connexion au serveur', style: titre),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _ipServeur,
-              decoration: const InputDecoration(
-                labelText: 'IP du serveur Asterisk',
-                border: OutlineInputBorder(),
+            // ---- Appel qui sonne ----
+            if (_sonne != null) _carteAppelEntrant(_sonne!),
+            if (_appelEnCours != null)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.phone_in_talk, color: Colors.green),
+                  title: const Text('En communication'),
+                  trailing: FilledButton.icon(
+                    onPressed: () =>
+                        Services.gestionnaire.raccrocher(_appelEnCours!),
+                    style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                    icon: const Icon(Icons.call_end),
+                    label: const Text('Raccrocher'),
+                  ),
+                ),
               ),
+
+            // ---- Ne pas déranger ----
+            StreamBuilder<List<Regle>>(
+              stream: Services.regles.surveiller(),
+              builder: (context, snapshot) {
+                final actif =
+                    (snapshot.data ?? []).any((r) => r.id == _idNePasDeranger);
+                return SwitchListTile(
+                  value: actif,
+                  onChanged: _basculerNePasDeranger,
+                  secondary: Icon(actif
+                      ? Icons.do_not_disturb_on
+                      : Icons.do_not_disturb_off),
+                  title: const Text('Ne pas déranger'),
+                  subtitle: const Text(
+                      'Tous les appels vont sur la messagerie, sauf les favoris'),
+                  contentPadding: EdgeInsets.zero,
+                );
+              },
             ),
+            const Divider(height: 24),
+
+            // ---- Connexion ----
+            Text('Connexion au serveur', style: titre),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: _ipServeur,
+                    decoration: const InputDecoration(
+                        labelText: 'IP serveur', border: OutlineInputBorder()),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
                   child: TextField(
                     controller: _utilisateur,
                     decoration: const InputDecoration(
-                      labelText: 'Compte',
-                      border: OutlineInputBorder(),
-                    ),
+                        labelText: 'Compte', border: OutlineInputBorder()),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -286,9 +247,8 @@ class _SipTestScreenState extends State<SipTestScreen>
                     controller: _motDePasse,
                     obscureText: true,
                     decoration: const InputDecoration(
-                      labelText: 'Mot de passe',
-                      border: OutlineInputBorder(),
-                    ),
+                        labelText: 'Mot de passe',
+                        border: OutlineInputBorder()),
                   ),
                 ),
               ],
@@ -297,71 +257,134 @@ class _SipTestScreenState extends State<SipTestScreen>
             Row(
               children: [
                 FilledButton(
-                  onPressed: _connecte ? _deconnecter : _connecter,
-                  child: Text(_connecte ? 'Se déconnecter' : 'Se connecter'),
+                  onPressed: connecte ? Services.sip.deconnecter : _connecter,
+                  child: Text(connecte ? 'Se déconnecter' : 'Se connecter'),
                 ),
                 const SizedBox(width: 12),
-                Expanded(child: Text(_etat)),
+                Text(switch (_etat) {
+                  EtatConnexion.deconnecte => 'Déconnecté',
+                  EtatConnexion.connexion => 'Connexion…',
+                  EtatConnexion.connecte => 'Connecté ✅',
+                  EtatConnexion.erreur => 'Erreur de connexion ❌',
+                }),
               ],
             ),
+
+            // ---- Appeler ----
             const Divider(height: 32),
-            Text('2. Appel', style: titre),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _destination,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Numéro (300 = Linphone, 100 = test écho)',
-                border: OutlineInputBorder(),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _destination,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Numéro (300 = Linphone, 100 = écho)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: connecte && _appelEnCours == null ? _appeler : null,
+                  icon: const Icon(Icons.call),
+                  label: const Text('Appeler'),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            if (_appelEntrant)
-              Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  FilledButton.icon(
-                    onPressed: _decrocher,
-                    style: FilledButton.styleFrom(backgroundColor: Colors.green),
-                    icon: const Icon(Icons.call),
-                    label: const Text('Décrocher'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _rejeter,
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                    icon: const Icon(Icons.call_end),
-                    label: const Text('Rejeter'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _ouvrirVoletMessages,
-                    icon: const Icon(Icons.message),
-                    label: const Text('Message'),
-                  ),
-                ],
-              )
-            else if (_appel != null)
-              FilledButton.icon(
-                onPressed: _raccrocher,
-                style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                icon: const Icon(Icons.call_end),
-                label: const Text('Raccrocher'),
-              )
-            else
-              FilledButton.icon(
-                onPressed: _connecte ? _appeler : null,
-                icon: const Icon(Icons.call),
-                label: const Text('Appeler'),
-              ),
+
+            // ---- Décisions du moteur ----
             const Divider(height: 32),
-            Text('Journal', style: titre),
-            const SizedBox(height: 8),
-            for (final ligne in _journal)
-              Text(ligne,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+            Text('Appels reçus et décisions du moteur', style: titre),
+            const SizedBox(height: 4),
+            if (_decisions.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text('Aucun appel reçu pour le moment.'),
+              ),
+            for (final (appel, decision, quand) in _decisions)
+              _ligneDecision(appel, decision, quand),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _carteAppelEntrant(AppelEntrant appel) {
+    final contact = _contactDe(appel.numero);
+    return Card(
+      color: Theme.of(context).colorScheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            const Icon(Icons.ring_volume, size: 40),
+            Text(contact?.nom ?? appel.nomAffiche ?? appel.numero,
+                style: Theme.of(context).textTheme.headlineSmall),
+            Text(appel.numero),
+            const SizedBox(height: 12),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: () =>
+                      Services.gestionnaire.decrocher(appel.idAppel),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                  icon: const Icon(Icons.call),
+                  label: const Text('Décrocher'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      Services.gestionnaire.rejeter(appel.idAppel),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                  icon: const Icon(Icons.call_end),
+                  label: const Text('Rejeter'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _ouvrirVoletMessages(appel),
+                  icon: const Icon(Icons.message),
+                  label: const Text('Message'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _ligneDecision(AppelEntrant appel, Decision decision, DateTime quand) {
+    final contact = _contactDe(appel.numero);
+    final (icone, couleur) = switch (decision.action.type) {
+      TypeAction.sonner => (Icons.ring_volume, Colors.green),
+      TypeAction.rejeter => (Icons.call_end, Colors.red),
+      TypeAction.rediriger => (Icons.phone_forwarded, Colors.orange),
+      TypeAction.messagerie => (Icons.voicemail, Colors.blue),
+    };
+    final heure = '${quand.hour.toString().padLeft(2, '0')}:'
+        '${quand.minute.toString().padLeft(2, '0')}:'
+        '${quand.second.toString().padLeft(2, '0')}';
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icone, color: couleur),
+      title: Text(contact?.nom ?? appel.numero),
+      subtitle: Text('$heure · ${decision.explication}'),
+      trailing: appel.estMasque
+          ? null
+          : IconButton(
+              tooltip: contact == null
+                  ? 'Enregistrer en contact'
+                  : 'Modifier le contact',
+              icon: Icon(contact == null ? Icons.person_add : Icons.edit),
+              onPressed: () async {
+                await ouvrirFicheContact(context,
+                    existant: contact, numero: appel.numero);
+                setState(() {}); // rafraîchit le nom affiché
+              },
+            ),
     );
   }
 }

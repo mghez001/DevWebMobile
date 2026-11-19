@@ -115,6 +115,17 @@ class GestionnaireAppels {
   // ------------------------------------------------------------------
 
   Future<void> _traiterAppel(AppelEntrant appel) async {
+    // ignore: avoid_print
+    print('[GA] Gestionnaire : appel entrant reçu $appel');
+    try {
+      await _traiterAppelSansGarde(appel);
+    } catch (e, pile) {
+      // ignore: avoid_print
+      print('[GA] ERREUR pendant le traitement de $appel : $e\n$pile');
+    }
+  }
+
+  Future<void> _traiterAppelSansGarde(AppelEntrant appel) async {
     final maintenant = _horloge();
     final ctx = ContexteDecision(
       contacts: contacts.tous,
@@ -126,6 +137,8 @@ class GestionnaireAppels {
       bloquesJusqua: Map.unmodifiable(_bloquesJusqua),
     );
     final decision = moteur.decider(appel, ctx);
+    // ignore: avoid_print
+    print('[GA] Décision : $decision');
     _decisions.add((appel, decision));
     await _executer(appel, decision, maintenant);
   }
