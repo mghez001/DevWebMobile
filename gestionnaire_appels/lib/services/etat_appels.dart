@@ -90,6 +90,15 @@ class EtatAppels extends ChangeNotifier {
     await _gestionnaire.rejeter(appel.idAppel);
   }
 
+  /// Bouton « Message rapide » : envoie un texte à l'appelant, puis rejette.
+  Future<void> refuserAvecMessage(String texte) async {
+    final appel = appelQuiSonne;
+    if (appel == null) return;
+    appelQuiSonne = null;
+    notifyListeners();
+    await _gestionnaire.rejeterAvecMessage(appel.idAppel, texte);
+  }
+
   /// Bouton « Raccrocher » de la barre d'appel en cours.
   Future<void> raccrocher() async {
     final appel = appelActif;
