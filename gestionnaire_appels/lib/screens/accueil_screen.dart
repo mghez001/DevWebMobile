@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
-import 'clavier_screen.dart';
+import '../widgets/barre_laterale.dart';
 import 'contacts_screen.dart';
 import 'journal_screen.dart';
-import 'sip_test_screen.dart';
+import 'parametres_screen.dart';
 
-/// Écran principal : une barre de navigation en bas avec 4 onglets.
+/// Structure de l'appli : barre latérale à gauche + page de l'onglet actif.
+/// (L'écran d'appel entrant et la barre d'appel en cours sont gérés par
+/// CoucheAppels, au-dessus de tout.)
 class AccueilScreen extends StatefulWidget {
   const AccueilScreen({super.key});
 
@@ -14,31 +16,31 @@ class AccueilScreen extends StatefulWidget {
 }
 
 class _AccueilScreenState extends State<AccueilScreen> {
-  int _ongletActif = 0;
-
-  static const _ecrans = [
-    JournalScreen(),
-    ContactsScreen(),
-    ClavierScreen(),
-    SipTestScreen(),
-  ];
-
-  static const _titres = ['Journal', 'Contacts', 'Clavier', 'Téléphone'];
+  int _onglet = 0;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_titres[_ongletActif])),
-      // IndexedStack garde l'état de chaque onglet (la connexion SIP reste active)
-      body: IndexedStack(index: _ongletActif, children: _ecrans),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _ongletActif,
-        onDestinationSelected: (i) => setState(() => _ongletActif = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.history), label: 'Journal'),
-          NavigationDestination(icon: Icon(Icons.contacts), label: 'Contacts'),
-          NavigationDestination(icon: Icon(Icons.dialpad), label: 'Clavier'),
-          NavigationDestination(icon: Icon(Icons.wifi_calling_3), label: 'Téléphone'),
+      body: Row(
+        children: [
+          BarreLaterale(
+            onglet: _onglet,
+            onChanger: (i) => setState(() => _onglet = i),
+          ),
+          Expanded(
+            child: SafeArea(
+              left: false,
+              // IndexedStack garde l'état de chaque onglet.
+              child: IndexedStack(
+                index: _onglet,
+                children: const [
+                  JournalScreen(),
+                  ContactsScreen(),
+                  ParametresScreen(),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
