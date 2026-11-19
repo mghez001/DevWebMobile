@@ -2,20 +2,26 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Barre latérale sombre à gauche : logo + onglets APPELS / CONTACTS /
-/// PARAMÈTRES.
+/// Barre latérale sombre à gauche : logo + onglets APPELS / MESSAGES /
+/// CONTACTS / PARAMÈTRES.
 class BarreLaterale extends StatelessWidget {
   const BarreLaterale({
     super.key,
     required this.onglet,
     required this.onChanger,
+    this.pastilles = const {},
   });
 
   final int onglet;
   final ValueChanged<int> onChanger;
 
+  /// Nombre affiché en pastille sur un onglet (index → nombre),
+  /// ex. {1: 2} = 2 messages non lus.
+  final Map<int, int> pastilles;
+
   static const _onglets = [
     (Icons.call_outlined, Icons.call_rounded, 'APPELS'),
+    (Icons.sms_outlined, Icons.sms_rounded, 'MESSAGES'),
     (Icons.people_outline_rounded, Icons.people_rounded, 'CONTACTS'),
     (Icons.tune_outlined, Icons.tune_rounded, 'PARAMÈTRES'),
   ];
@@ -47,6 +53,7 @@ class BarreLaterale extends StatelessWidget {
                 icone: onglet == i ? _onglets[i].$2 : _onglets[i].$1,
                 libelle: _onglets[i].$3,
                 actif: onglet == i,
+                pastille: pastilles[i] ?? 0,
                 onTap: () => onChanger(i),
               ),
           ],
@@ -62,12 +69,14 @@ class _Onglet extends StatelessWidget {
     required this.libelle,
     required this.actif,
     required this.onTap,
+    this.pastille = 0,
   });
 
   final IconData icone;
   final String libelle;
   final bool actif;
   final VoidCallback onTap;
+  final int pastille;
 
   @override
   Widget build(BuildContext context) {
@@ -101,8 +110,13 @@ class _Onglet extends StatelessWidget {
                 child: Center(
                   child: Column(
                     children: [
-                      Icon(icone,
-                          color: actif ? Couleurs.signal : couleur, size: 24),
+                      Badge(
+                        isLabelVisible: pastille > 0,
+                        label: Text('$pastille'),
+                        backgroundColor: Couleurs.signal,
+                        child: Icon(icone,
+                            color: actif ? Couleurs.signal : couleur, size: 24),
+                      ),
                       const SizedBox(height: 6),
                       FittedBox(
                         fit: BoxFit.scaleDown,

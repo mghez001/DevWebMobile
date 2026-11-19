@@ -139,6 +139,42 @@ class EtatAppel {
   const EtatAppel({required this.idAppel, required this.statut, this.detail});
 }
 
+/// Message texte SIP (MESSAGE) reçu, ex. « Je suis en réunion… » envoyé
+/// par quelqu'un qui a refusé notre appel avec un message rapide.
+class MessageRecu {
+  final String id;
+
+  /// Numéro de l'expéditeur, déjà normalisé (ex. "500").
+  final String numero;
+  final String? nomAffiche;
+  final String texte;
+  final DateTime recuLe;
+
+  /// Faux tant que l'onglet « Messages » n'a pas été ouvert.
+  final bool lu;
+
+  const MessageRecu({
+    required this.id,
+    required this.numero,
+    this.nomAffiche,
+    required this.texte,
+    required this.recuLe,
+    this.lu = false,
+  });
+
+  MessageRecu marqueLu() => MessageRecu(
+        id: id,
+        numero: numero,
+        nomAffiche: nomAffiche,
+        texte: texte,
+        recuLe: recuLe,
+        lu: true,
+      );
+
+  @override
+  String toString() => 'MessageRecu($numero, $texte)';
+}
+
 class CompteSip {
   final String serveur; // ex. "127.0.0.1"
   final String utilisateur; // ex. "400"

@@ -37,6 +37,13 @@ abstract class JournalRepository {
   Future<void> ajouter(Appel appel);
 }
 
+abstract class MessageRepository {
+  List<MessageRecu> get tous;
+  Stream<List<MessageRecu>> surveiller();
+  Future<void> ajouter(MessageRecu message);
+  Future<void> marquerTousLus();
+}
+
 // =====================================================================
 //  Implémentations en mémoire
 // =====================================================================
@@ -128,4 +135,24 @@ class JournalRepositoryMemoire implements JournalRepository {
   Stream<List<Appel>> surveiller() => _liste.surveiller();
   @override
   Future<void> ajouter(Appel appel) async => _liste.enregistrer(appel);
+}
+
+class MessageRepositoryMemoire implements MessageRepository {
+  MessageRepositoryMemoire([List<MessageRecu> initiaux = const []])
+      : _liste = _ListeEnMemoire<MessageRecu>((m) => m.id, initiaux);
+  final _ListeEnMemoire<MessageRecu> _liste;
+
+  @override
+  List<MessageRecu> get tous => _liste.tous;
+  @override
+  Stream<List<MessageRecu>> surveiller() => _liste.surveiller();
+  @override
+  Future<void> ajouter(MessageRecu message) async =>
+      _liste.enregistrer(message);
+  @override
+  Future<void> marquerTousLus() async {
+    for (final m in _liste.tous.where((m) => !m.lu)) {
+      _liste.enregistrer(m.marqueLu());
+    }
+  }
 }

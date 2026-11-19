@@ -23,16 +23,21 @@ class GestionnaireAppels {
     required this.regles,
     required this.calendrier,
     required this.journal,
+    MessageRepository? messages,
     this.moteur = const MoteurDeRegles(),
     this.cibleMessagerie = 'vm400',
     DateTime Function()? horloge,
-  }) : _horloge = horloge ?? DateTime.now;
+  })  : messages = messages ?? MessageRepositoryMemoire(),
+        _horloge = horloge ?? DateTime.now;
 
   final SipService sip;
   final ContactRepository contacts;
   final RegleRepository regles;
   final CalendrierRepository calendrier;
   final JournalRepository journal;
+
+  /// Messages texte reçus (onglet « Messages »).
+  final MessageRepository messages;
   final MoteurDeRegles moteur;
 
   /// Extension Asterisk de la messagerie vocale (dialplan : VoiceMail).
@@ -43,6 +48,7 @@ class GestionnaireAppels {
 
   final _aSonner = StreamController<AppelEntrant>.broadcast();
   final _decisions = StreamController<(AppelEntrant, Decision)>.broadcast();
+  final _nouveauxMessages = StreamController<MessageRecu>.broadcast();
 
   /// Appels qui ont sonné et attendent une réponse : id → (appel, décision).
   final Map<String, (AppelEntrant, Decision)> _enAttente = {};
@@ -56,6 +62,7 @@ class GestionnaireAppels {
 
   StreamSubscription<AppelEntrant>? _abonnementAppels;
   StreamSubscription<EtatAppel>? _abonnementEtats;
+  StreamSubscription<MessageRecu>? _abonnementMessages;
 
   // ------------------------------------------------------------------
   //  API pour le front
@@ -67,14 +74,22 @@ class GestionnaireAppels {
   /// Toutes les décisions prises (utile pour déboguer / afficher un toast).
   Stream<(AppelEntrant, Decision)> get decisions => _decisions.stream;
 
+  /// Chaque message reçu, une fois enregistré (pour afficher un toast).
+  Stream<MessageRecu> get nouveauxMessages => _nouveauxMessages.stream;
+
   void demarrer() {
     _abonnementAppels = sip.appelsEntrants.listen(_traiterAppel);
     _abonnementEtats = sip.etatAppels.listen(_suivreEtat);
+    _abonnementMessages = sip.messagesRecus.listen((message) async {
+      await messages.ajouter(message);
+      _nouveauxMessages.add(message);
+    });
   }
 
   Future<void> arreter() async {
     await _abonnementAppels?.cancel();
     await _abonnementEtats?.cancel();
+    await _abonnementMessages?.cancel();
     for (final m in _minuteurs.values) {
       m.cancel();
     }
