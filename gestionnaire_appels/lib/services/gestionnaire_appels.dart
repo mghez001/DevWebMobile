@@ -92,6 +92,24 @@ class GestionnaireAppels {
     }
   }
 
+  /// Rejet manuel avec message (volet « Répondre par message »).
+  Future<void> rejeterAvecMessage(String idAppel, String texte) async {
+    final enAttente = _enAttente.remove(idAppel);
+    _annulerMinuteur(idAppel);
+    try {
+      if (enAttente != null) {
+        await sip.envoyerMessage(enAttente.$1.numero, texte);
+      }
+    } finally {
+      // Même si l'envoi échoue, l'appel doit être terminé.
+      await sip.rejeter(idAppel, code: 486, raison: 'Occupé');
+    }
+    if (enAttente != null) {
+      await _journaliser(
+          enAttente.$1, IssueAppel.rejete, 'Message rapide : $texte');
+    }
+  }
+
   // ------------------------------------------------------------------
   //  Traitement d'un appel entrant
   // ------------------------------------------------------------------
