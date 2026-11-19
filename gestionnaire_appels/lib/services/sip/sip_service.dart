@@ -25,6 +25,9 @@ abstract class SipService {
   /// Un événement par message texte SIP (MESSAGE) reçu.
   Stream<MessageRecu> get messagesRecus;
 
+  /// Dernier compte passé à [connecter] (null si aucun).
+  CompteSip? get compte;
+
   Future<void> connecter(CompteSip compte);
   Future<void> deconnecter();
 

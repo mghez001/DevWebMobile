@@ -47,7 +47,7 @@ La colonne « Où » indique la fonction ou le fichier à ouvrir.
 | Sonner                 | L'appel s'affiche avec Décrocher / Rejeter             | ✅                                 | `GestionnaireAppels.appelsASonner` |
 | Rejeter                | Réponse SIP 603 (refus) ou 486 (occupé)                | ✅                                 | `SipService.rejeter`               |
 | Rediriger              | Renvoi vers un collègue (réponse 302)                  | ✅ appli · à valider avec Asterisk | `SipService.rediriger`             |
-| Messagerie vocale      | Redirection vers l'extension `vm400`                   | ⏳ extension absente               | `extensions.conf`                  |
+| Messagerie vocale      | Redirection (302) vers `vm` + compte (`vm400`, `vm500`) | ✅ appli · à valider avec Asterisk | `extensions.conf` (`_vm[45]XX`)    |
 | SMS à l'appelant       | Message SIP (MESSAGE) envoyé à l'appelant              | ✅ appli · à valider avec Asterisk | `SipService.envoyerMessage`        |
 | Message personnalisé   | « Disponible à {fin} », « Bonjour {nom} »              | ⏳                                 | `resoudreTexte`                    |
 | Sonner puis renvoyer   | Sonner 20 s, puis messagerie si pas de réponse         | ✅                                 | `GestionnaireAppels` (minuteur)    |
@@ -119,8 +119,8 @@ Comptes de test (le mot de passe est le numéro) :
 
 **Tester une règle** : dans l'onglet 1, activez **Ne pas déranger**, puis rappelez depuis l'onglet 2.
 La décision affichée devient *« Ne pas déranger »* (→ messagerie).
-⚠️ Tant que l'extension de messagerie `vm400` n'existe pas dans Asterisk, l'appel échoue
-côté appelant : c'est normal, seule la décision compte pour ce test.
+L'appli répond 302 vers `vm400` : l'onglet 2 entend l'annonce de la messagerie et peut laisser
+un message (vérifiable dans la console Asterisk avec `voicemail show users`).
 
 **Problème de son ?** Appelez le `100` : si vous ne vous entendez pas, le souci vient du micro
 ou d'Asterisk, pas des règles. Le navigateur doit avoir l'autorisation d'utiliser le micro
@@ -256,7 +256,7 @@ flowchart TB
     subgraph C2["Cas 2 · rediriger / messagerie"]
         D1["<b>GA → SipService</b><br/><small>rediriger(id, cible)</small>"]
         D2["<b>SipService → Asterisk</b><br/><small>302 + Contact : cible</small>"]
-        D3["<b>Asterisk</b><br/><small>appelle la cible<br/>(collègue ou vm400)</small>"]
+        D3["<b>Asterisk</b><br/><small>appelle la cible<br/>(collègue ou vm400/vm500)</small>"]
         D4["<b>GA → Journal</b><br/><small>issue : redirige / messagerie</small>"]
     end
     subgraph C3["Cas 1 · sonner"]
@@ -289,7 +289,8 @@ flowchart TB
   de l'appel**, car c'est seulement à ce moment qu'on sait s'il a été répondu ou manqué.
   Variante « sonner 20 s puis messagerie » : un minuteur relance le cas 2 si personne ne décroche.
 - **Cas 2 · rediriger / messagerie** : l'appli ne transfère pas l'appel elle-même. Elle répond 302
-  à Asterisk, qui appelle la cible à sa place. La messagerie est une redirection vers `vm400`.
+  à Asterisk, qui appelle la cible à sa place. La messagerie est une redirection vers
+  `vm` + le compte connecté (`vm400`, `vm500`), que le dialplan envoie sur `VoiceMail()`.
 - **Cas 3 · rejeter** : 603 pour un refus, 486 pour « occupé ».
 
 Dans tous les cas, **avant** d'exécuter l'action, le Gestionnaire peut aussi :
@@ -347,7 +348,7 @@ Un critère laissé à `null` est ignoré.
 | Champ | Rôle |
 |---|---|
 | `type` | `sonner`, `rejeter`, `rediriger` ou `messagerie` |
-| `cible` | numéro de redirection (ex. `"500"`), ou autre extension que `vm400` pour la messagerie |
+| `cible` | numéro de redirection (ex. `"500"`) ; pour la messagerie, remplace la boîte par défaut (`vm` + compte connecté) |
 | `codeSip` | code du rejet : 603 (refus, par défaut), 486 (occupé), 480 (indisponible) |
 | `messageTexte` | texte envoyé à l'appelant ; variables `{fin}` (heure de fin du rendez-vous) et `{nom}` (⏳ `resoudreTexte`) |
 | `envoyerMessageSip` | envoie aussi `messageTexte` par SMS SIP |
@@ -435,7 +436,7 @@ DevWebMobile/
         ├── Dockerfile
         └── configuration/          ← monté dans le conteneur
             ├── pjsip.conf          ← comptes 300, 400, 500 et transports
-            ├── extensions.conf     ← dialplan : _XXX, 100 (écho), annonce-masque
+            ├── extensions.conf     ← dialplan : _XXX, 100 (écho), vm400/vm500, annonce-masque
             └── http.conf           ← WebSocket 8088 / 8089
 ```
 
@@ -504,7 +505,7 @@ test('nuit → messagerie à 23h', () {
 | Limite | Conséquence | Piste |
 |---|---|---|
 | Données en mémoire | Contacts, règles et journal sont perdus à chaque redémarrage | Repositories persistants (`sqflite` sur Android), en gardant la version mémoire pour le web |
-| Pas d'extension `vm400` | Toute décision « messagerie » échoue côté Asterisk | Activer `app_voicemail` et ajouter `vm400` dans `extensions.conf` |
+| Dial de 10 s dans `_[45]XX` | Asterisk envoie lui-même sur la messagerie au bout de 10 s : la règle « sonner 20 s puis messagerie » de l'appli ne se déclenche jamais | Allonger le `Dial` (> 20 s) ou raccourcir `sonnerPendant` |
 | Redirection 302 et SMS SIP non validés | On ne sait pas encore si Asterisk suit le 302 et relaie les MESSAGE | Tester avec deux clients ; vérifier `res_pjsip_messaging` |
 | Écran Journal sur fausses données | Le vrai journal n'est pas affiché | Brancher l'écran sur `Services.journal.surveiller()` |
 | Pas d'écran Règles ni Calendrier | Les règles s'ajoutent seulement dans le code (ou « Ne pas déranger ») | Écrans de création / édition |
