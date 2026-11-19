@@ -1,130 +1,188 @@
-# DevWebMobile
-
 # Gestionnaire d'appels
 
 Application Flutter de téléphonie SIP qui **décide toute seule quoi faire d'un appel entrant** :
-le faire sonner, le rejeter, le rediriger vers un collègue ou vers la messagerie,
-selon **qui** appelle, **quand**, et ce qu'on a choisi de **répondre**.
+le faire sonner, le rejeter, le renvoyer vers un collègue ou la messagerie vocale, envoyer un message
+à l'appelant… selon **qui** appelle, **quand**, et ce qu'on a choisi de **répondre**.
 
-**Stack** : Flutter / Dart · [sip_ua](https://github.com/flutter-webrtc/dart-sip-ua) (client SIP + WebRTC) · Asterisk (serveur SIP, dans un conteneur Podman/Docker)
+**Stack** : Flutter / Dart · [sip_ua](https://github.com/flutter-webrtc/dart-sip-ua) (SIP + WebRTC) · Asterisk 16 (conteneur Docker)
+**Présentation** : mercredi 16 décembre 2026
 
-**Sommaire** : [Fonctionnalités](#fonctionnalités) · [Démarrage rapide](#démarrage-rapide) · [Architecture](#architecture) · [Parcours d'un appel](#parcours-dun-appel-entrant) · [Moteur de règles](#le-moteur-de-règles) · [Structure](#structure-du-dépôt) · [Tests](#tests) · [Équipe](#travailler-en-équipe) · [Limites](#limites-connues-et-prochaines-étapes)
+**Sommaire** : [État](#état-du-projet) · [Démarrage rapide](#démarrage-rapide) · [Reste à faire](#reste-à-faire--cibler-la-démo) · [Architecture](#architecture) · [Parcours d'un appel](#parcours-dun-appel-entrant) · [Moteur de règles](#le-moteur-de-règles) · [Structure](#structure-du-dépôt) · [Tests](#tests) · [Équipe](#travailler-en-équipe)
 
-## Fonctionnalités
+## État du projet
 
-Les fonctionnalités sont rangées en trois blocs : **Qui** appelle, **Quand**, et quelle **Réponse** donner.
-La colonne « Où » indique la fonction ou le fichier à ouvrir.
+*Au 19/11/2026* · ✅ sur `main` · 🚧 partiel · ⏳ à faire
 
-✅ sur `main` · 🚧 en cours (branche ouverte ou partiel) · ⏳ à faire — *état au 16/11/2026*
+**Testé de bout en bout** (appli + Asterisk, deux onglets) : appel et décision du moteur, journal,
+messagerie vocale, message rapide reçu par l'appelant, annonce pour les numéros masqués.
 
-### Qui
+### Qui appelle
 
-| Fonctionnalité | Exemple | État | Où |
-|---|---|---|---|
-| Favoris | Un favori sonne toujours, même la nuit ou en réunion | ✅ | `reglesSysteme` |
-| Contacts bloqués | Un contact du groupe « bloqué » part sur la messagerie | ✅ | `reglesSysteme` |
-| Numéros masqués | Annonce vocale « les appels masqués ne sont pas acceptés » | ✅ | `reglesSysteme` + extension `annonce-masque` |
-| Démarchage | Préfixes ARCEP (0162, 0163, 0270…) → messagerie | ✅ | `regleNumerosIndesirables` |
-| Anti-harcèlement | 10 appels sans réponse en 30 min → bloqué 2 h | ✅ | `reglesSysteme` |
-| Règles par appelant | « Les inconnus → messagerie », « groupe pro → collègue » | ⏳ | `appelantCorrespond` |
-| Déjà en ligne | Un 2ᵉ appel pendant une communication → occupé (486) | ⏳ | `reglesSysteme` |
+| Fonctionnalité      | Exemple                                                  | État                       | Où                                           |
+| ------------------- | -------------------------------------------------------- | -------------------------- | -------------------------------------------- |
+| Favoris             | Un favori sonne toujours, même en « Ne pas déranger »    | ✅                          | `reglesSysteme`                              |
+| Contacts bloqués    | Groupe « Bloqué » → messagerie                           | ✅                          | `reglesSysteme`                              |
+| Numéros masqués     | Annonce « les appels masqués ne sont pas acceptés »      | ✅                          | `reglesSysteme` + extension `annonce-masque` |
+| Démarchage          | Préfixes ARCEP (0162, 0163, 0270…) → messagerie          | ✅                          | `regleNumerosIndesirables`                   |
+| Anti-harcèlement    | Trop d'appels sans réponse en 30 min → bloqué 2 h        | ✅ seuil à 3 pour les tests | `reglesSysteme`                              |
+| Règles par appelant | « Les inconnus → messagerie », « groupe pro → collègue » | ✅                          | `appelantCorrespond`                         |
+| Déjà en ligne       | 2ᵉ appel pendant une communication → occupé (486)        | ⏳                          | `reglesSysteme`                              |
 
 ### Quand
 
-| Fonctionnalité | Exemple | État | Où |
-|---|---|---|---|
-| En rendez-vous | Pendant un événement « occupé » → messagerie + SMS | ✅ | `calendrierCorrespond`, `regleEnRendezVous` |
-| Participant au rendez-vous | L'appelant est dans la réunion en cours | ✅ | `calendrierCorrespond` |
-| Jours de la semaine | « Le week-end → messagerie » | 🚧 | `jourCorrespond` (branche `feature/when-actions`) |
-| Plage horaire | 18h → 9h → messagerie | 🚧 | `plageCorrespond`, `regleHorsHoraires` (branche) |
-| Vacances | Un événement « vacances » dans l'agenda → messagerie | 🚧 | `vacancesCorrespond` (branche) |
-| Agenda du téléphone | Lire les événements du téléphone (Android) | 🚧 | `device_calendar` (branche) |
+| Fonctionnalité             | Exemple                                                                         | État                                             | Où                                          |
+| -------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------- |
+| En rendez-vous             | Événement en cours → messagerie + SMS « disponible à {fin} »                    | ✅ moteur · ⏳ aucun écran pour créer un événement | `calendrierCorrespond`, `regleEnRendezVous` |
+| Participant au rendez-vous | L'appelant est dans la réunion en cours                                         | ✅ moteur                                         | `calendrierCorrespond`                      |
+| Jours de la semaine        | « Le week-end → messagerie »                                                    | ✅                                                | `jourCorrespond`                            |
+| Plage horaire              | 18h → 9h → messagerie + SMS                                                     | ✅                                                | `plageCorrespond`, `regleHorsHoraires`      |
+| Vacances                   | Événement « vacances » / « congé » → messagerie + SMS « de retour le {retour} » | ✅                                                | `vacancesCorrespond`, `regleVacances`       |
+| Agenda du téléphone        | Lire le calendrier Android                                                      | ⏳ `device_calendar` déclaré, pas utilisé         | —                                           |
 
 ### Réponse
 
-| Fonctionnalité         | Exemple                                                | État                              | Où                                 |
-| ---------------------- | ------------------------------------------------------ | --------------------------------- | ---------------------------------- |
-| Sonner                 | L'appel s'affiche avec Décrocher / Rejeter             | ✅                                 | `GestionnaireAppels.appelsASonner` |
-| Rejeter                | Réponse SIP 603 (refus) ou 486 (occupé)                | ✅                                 | `SipService.rejeter`               |
-| Rediriger              | Renvoi vers un collègue (réponse 302)                  | ✅ appli · à valider avec Asterisk | `SipService.rediriger`             |
-| Messagerie vocale      | Redirection (302) vers `vm` + compte (`vm400`, `vm500`) | ✅ appli · à valider avec Asterisk | `extensions.conf` (`_vm[45]XX`)    |
-| SMS à l'appelant       | Message SIP (MESSAGE) envoyé à l'appelant              | ✅ appli · à valider avec Asterisk | `SipService.envoyerMessage`        |
-| Message personnalisé   | « Disponible à {fin} », « Bonjour {nom} »              | ⏳                                 | `resoudreTexte`                    |
-| Sonner puis renvoyer   | Sonner 20 s, puis messagerie si pas de réponse         | ✅                                 | `GestionnaireAppels` (minuteur)    |
-| Appel répété = urgence | 2ᵉ appel du même numéro en 3 min → sonne               | ⏳                                 | `appelRepeteCorrespond`            |
-| Journal                | Chaque appel est enregistré avec la règle qui a décidé | ✅ enregistrement · 🚧 écran       | `JournalRepository`                |
+| Fonctionnalité | Exemple | État | Où |
+|---|---|---|---|
+| Sonner | Écran plein avec Décrocher / Raccrocher | ✅ | `AppelEntrantScreen`, `EtatAppels` |
+| Rejeter | Réponse SIP 603 (refus) ou 486 (occupé) | ✅ | `SipService.rejeter` |
+| Message rapide | Bouton sur l'écran d'appel : message à l'appelant + rejet 486 | ✅ | `EtatAppels.refuserAvecMessage` |
+| SMS automatique | Une règle envoie un message à l'appelant (`envoyerMessageSip`) | ✅ | `GestionnaireAppels`, contexte `[messages]` |
+| Messages reçus | Onglet Messages, pastille et bandeau | ✅ | `SipServiceUa.onNewMessage`, `MessagesScreen` |
+| Messagerie vocale | 302 vers `vm` + compte connecté → `VoiceMail()` | ✅ | `extensions.conf` (`_vm[45]XX`) |
+| Message personnalisé | Variables `{fin}`, `{nom}`, `{retour}` | ✅ | `resoudreTexte` |
+| Rediriger vers un collègue | 302 vers un autre numéro | ✅ appli · ⏳ jamais testé avec Asterisk | `SipService.rediriger` |
+| Sonner puis renvoyer | Sonner 20 s, puis messagerie | ⚠️ court-circuité par le `Dial` de 10 s d'Asterisk | `GestionnaireAppels` (minuteur) |
+| Appel répété = urgence | 2ᵉ appel du même numéro en 3 min → sonne | ⏳ | `appelRepeteCorrespond` |
+
+### Interface
+
+✅ Journal (vrais appels + règle qui a décidé) · ✅ Messages · ✅ Contacts et groupes · ✅ Paramètres
+(Ne pas déranger, compte SIP) · ✅ Clavier · ⏳ écran Règles · ⏳ écran Agenda ·
+⏳ **jamais lancé sur Android** (tout est testé dans Chrome)
 
 ## Démarrage rapide
 
 ### Prérequis
 
-| Outil | Version | Vérifier |
-|---|---|---|
-| Flutter | SDK Dart ≥ 3.13 | `flutter --version` |
-| Chrome ou Chromium | récente | `flutter doctor` → ligne « Chrome » au vert |
-| Docker **ou** Podman | — | `docker --version` |
-| make | — | `make --version` |
-
-> **Sous Linux avec Chromium** : Flutter cherche Chrome par défaut. Indiquez-lui Chromium avec
-> `export CHROME_EXECUTABLE=/usr/bin/chromium` (à mettre dans votre `.bashrc` / `.zshrc`).
-### 1. Lancer le serveur Asterisk
-
-```bash
-cd gestionnaire_appels/serveur_asterisk
-make          # 1re fois : construit l'image puis lance le conteneur
-make run      # les fois suivantes : lance seulement
-```
-
-Le terminal affiche ensuite la console d'Asterisk : **laissez-le ouvert** et ouvrez un
-autre terminal pour la suite.
-
-Le dossier `configuration/` est monté dans le conteneur. Après une modification de
-`extensions.conf` ou de `pjsip.conf`, pas besoin de relancer : tapez `core reload`
-dans la console Asterisk.
-
-| Port | Rôle |
+| Outil | Vérifier |
 |---|---|
-| 8088 | SIP sur WebSocket (`ws://`), **utilisé par l'appli** |
-| 8089 | SIP sur WebSocket sécurisé (`wss://`) |
-| 5060 | SIP classique UDP/TCP (Linphone) |
-| 30000-30100 | Audio (RTP) |
+| Flutter (SDK Dart ≥ 3.13) | `flutter --version` |
+| Chrome ou Chromium | `flutter doctor` → ligne « Chrome » au vert |
+| Docker (ou Podman avec la commande `docker`) | `docker --version` |
+| make | `make --version` |
 
-### 2. Lancer l'appli
+> **Linux avec Chromium** : `export CHROME_EXECUTABLE=/usr/bin/chromium` dans votre `.bashrc` / `.zshrc`.
+
+### Lancer
 
 ```bash
 cd gestionnaire_appels
-flutter pub get
-flutter run -d web-server --web-port 8080
+./lancer.sh          # Asterisk + sa console dans une 2e fenêtre + appli sur http://localhost:8080
+./lancer.sh chrome   # variante : un seul onglet Chrome, avec rechargement à chaud
 ```
 
-Ouvrez **deux onglets** sur `http://localhost:8080` : chacun jouera un téléphone.
-(`flutter run -d chrome` marche aussi, avec rechargement automatique, mais sur un seul onglet.)
+La 1ʳᵉ fois, le script construit l'image Asterisk. **Ctrl+C** arrête l'appli **et** Asterisk.
+Sans le script : `make` (puis `make run`) dans `serveur_asterisk/`, et
+`flutter run -d web-server --web-port 8080` dans `gestionnaire_appels/`.
 
-### 3. Premier appel
+**Console Asterisk** : `docker exec -it asterisk asterisk -r`
 
-Comptes de test (le mot de passe est le numéro) :
+| Après avoir modifié… | Taper |
+|---|---|
+| `extensions.conf`, `pjsip.conf` | `core reload` |
+| `voicemail.conf` | `voicemail reload` |
+| `modules.conf` | redémarrer le conteneur |
 
-| Compte | Type | Pour quoi |
+Commandes utiles : `voicemail show users` (messages déposés), `pjsip show contacts` (qui est connecté),
+`pjsip set logger on` (voir passer le SIP).
+
+### Comptes et numéros de test
+
+| Numéro | Rôle |
+|---|---|
+| 400 | L'appli (connexion automatique au démarrage, mot de passe `400`) |
+| 500 | 2ᵉ onglet de l'appli (mot de passe `500`) |
+| 300 | Linphone ou autre client SIP classique (UDP 5060) |
+| 100 | Test d'écho : on entend sa propre voix |
+| 8400 | Appelle le 400 en **numéro masqué** |
+| 9400 | Appelle le 400 depuis un numéro de **démarchage** (0162…) |
+| \*77 | Enregistrer l'annonce des numéros masqués |
+| vm400, vm500 | Messageries vocales (cibles des 302 envoyés par l'appli) |
+
+Ports : **8080** appli web · **8088** SIP sur WebSocket (utilisé par l'appli) · 8089 WebSocket sécurisé ·
+5060 SIP classique · 30000-30100 audio (RTP).
+
+### Premier appel
+
+1. Ouvrir **deux onglets** sur `http://localhost:8080` : chacun est un téléphone indépendant.
+   Les deux démarrent connectés en 400.
+2. **Onglet 2** → bouton rond en haut à droite (ou *Paramètres* → *Serveur SIP*) → compte `500`, mot de passe `500`.
+3. **Onglet 2** → *Journal* → bouton Clavier → composer `400` → appeler.
+4. **Onglet 1** : l'écran d'appel entrant s'affiche. Après l'appel, le *Journal* indique la règle qui a décidé.
+
+**Problème de son ?** Composer `100` : sans écho, le souci vient du micro ou d'Asterisk, pas des règles.
+Les deux onglets partagent le même micro : prévoir un casque.
+
+### Scénarios de test
+
+Toujours : **onglet 1 = 400** (celui qui reçoit), **onglet 2 = 500** (celui qui appelle).
+
+| Pour tester | Faire | Résultat attendu |
 |---|---|---|
-| 400 | WebRTC | L'appli (compte prérempli) |
-| 500 | WebRTC | Un 2ᵉ onglet de l'appli |
-| 300 | SIP classique | Linphone ou un autre client SIP (UDP 5060) |
-| 100 | Extension | Test d'écho : vous entendez votre propre voix |
+| Messagerie vocale | Onglet 1 : *Paramètres* → *Ne pas déranger*. Onglet 2 appelle 400 | Annonce de messagerie, message déposé (`voicemail show users`) |
+| Favori | Onglet 1 : ajouter 500 dans *Contacts*, groupe *Favori*, garder *Ne pas déranger* | Ça sonne quand même |
+| Bloqué | Onglet 1 : passer le contact 500 dans le groupe *Bloqué* | Messagerie |
+| Message rapide | Onglet 2 appelle 400. Onglet 1 : *Message rapide* → choisir un texte | Appel rejeté ; bandeau et onglet *Messages* dans l'onglet 2 |
+| Numéro masqué | Onglet 2 compose `8400` (enregistrer l'annonce avant avec `*77`) | Annonce « appels masqués non acceptés » |
+| Démarchage | Onglet 2 compose `9400` | Messagerie |
+| Anti-harcèlement | Onglet 2 appelle 400 plusieurs fois sans qu'on décroche | Au 4ᵉ appel (seuil 3 dépassé) : messagerie + numéro bloqué 2 h |
 
-1. **Onglet 1** → *Test SIP* → **Se connecter** (compte 400 déjà rempli).
-2. **Onglet 2** → *Test SIP* → remplacez *Compte* et *Mot de passe* par `500` → **Se connecter**.
-3. Depuis l'onglet 2, tapez `400` dans *Numéro* → **Appeler**.
-4. Dans l'onglet 1, l'appel apparaît dans **« Appels reçus et décisions du moteur »** avec la décision
-   *« Aucune règle : sonnerie normale »* et les boutons **Décrocher** / **Rejeter**.
+## Reste à faire : cibler la démo
 
-**Tester une règle** : dans l'onglet 1, activez **Ne pas déranger**, puis rappelez depuis l'onglet 2.
-La décision affichée devient *« Ne pas déranger »* (→ messagerie).
-L'appli répond 302 vers `vm400` : l'onglet 2 entend l'annonce de la messagerie et peut laisser
-un message (vérifiable dans la console Asterisk avec `voicemail show users`).
+**Principe** : la démo du 16/12 montre 6 ou 7 appels, chacun illustrant une règle de bout en bout.
+Ce qui ne sert pas ce scénario passe après. On **gèle les fonctionnalités à l'avant-dernière séance** ;
+la dernière sert à répéter et à enregistrer une **vidéo de secours** de la démo.
 
-**Problème de son ?** Appelez le `100` : si vous ne vous entendez pas, le souci vient du micro
-ou d'Asterisk, pas des règles. Le navigateur doit avoir l'autorisation d'utiliser le micro
-(accordée automatiquement sur `localhost`).
+### Scénario de démo (proposition)
+
+| # | Appel | Montre | Prêt ? |
+|---|---|---|---|
+| 1 | Un inconnu appelle, on décroche | L'appel, le journal | ✅ |
+| 2 | Même appel pendant un rendez-vous | Messagerie + SMS « disponible à 15:30 » reçu par l'appelant | 🚧 écran Agenda |
+| 3 | Un favori appelle en « Ne pas déranger » | La priorité des règles système | ✅ |
+| 4 | Démarchage (`9400`) puis numéro masqué (`8400`) | Le filtrage | ✅ |
+| 5 | On refuse avec un message rapide | Le message lu chez l'appelant | ✅ |
+| 6 | Le même numéro insiste (4 appels sans réponse) | L'anti-harcèlement | ✅ |
+| 7 | (option) Appel à 19h | La plage horaire | 🚧 simuler l'heure |
+
+### P0 : bloquant pour la démo
+
+| Tâche                                                                         | Pourquoi                                                             | Où                    |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------- |
+| Écran Agenda (ou bouton « données de démo » qui crée un rendez-vous en cours) | Sinon rendez-vous et vacances ne se montrent qu'en modifiant le code | `Services.calendrier` |
+| Tester la redirection vers un collègue (302 → 500)                            | Jamais vérifiée avec Asterisk                                        | —                     |
+| Lancer une fois sur Android (émulateur)                                       | La cible est le téléphone ; tout n'a été testé que dans Chrome       | —                     |
+
+### P1 : rend la démo plus convaincante
+
+| Tâche | Pourquoi | Où |
+|---|---|---|
+| Écran Règles (lister, activer, créer) | Créer une règle en direct pendant la démo | `Services.regles` |
+| Simuler l'heure (mode démo) | Montrer « hors horaires » en pleine journée | `GestionnaireAppels` accepte déjà une `horloge` |
+| Choisir qui décide après 10 s | Le `Dial(…,10)` d'Asterisk envoie sur la messagerie avant la règle « sonner 20 s » de l'appli | `extensions.conf` (`_[45]XX`) |
+| Seuil anti-harcèlement : 3 pour la démo ou 10 ? | Décider et l'écrire | `services.dart` |
+
+### P2 : si le temps le permet
+
+`appelRepeteCorrespond` · « déjà en ligne » · nettoyage du code plus utilisé (`sip_test_screen.dart`,
+`fausses_donnees.dart`, `models/appel.dart`, `tuile_appel.dart` : vérifier avant de supprimer) et des
+dépendances inutilisées (`flutter_contacts`, `device_calendar`) · fusionner `README_MESSAGES.md` ici.
+
+### Hors périmètre (à présenter comme limites)
+
+Vidéo · persistance (contacts, règles et journal sont **en mémoire**, perdus au redémarrage ; les
+messages vocaux sont dans le conteneur) · appli en arrière-plan sur Android · agenda du téléphone ·
+plusieurs appareils réels (tout tourne en `localhost`).
 
 ## Architecture
 
@@ -184,11 +242,12 @@ Trait épais = ce que reçoit le Gestionnaire · pointillés = ce qu'il envoie
 | Brique             | Son rôle                                                | Fichier                                 |
 | ------------------ | ------------------------------------------------------- | --------------------------------------- |
 | Écrans             | Affichent les appels, transmettent les clics            | `lib/screens/`                          |
+| EtatAppels         | Ce que l'interface affiche : appel qui sonne, en cours, connexion | `lib/services/etat_appels.dart` |
 | GestionnaireAppels | Fait circuler l'information, exécute la décision        | `lib/services/gestionnaire_appels.dart` |
 | MoteurDeRegles     | Décide quoi faire d'un appel                            | `lib/services/moteur_regles.dart`       |
-| Repositories       | Stockent contacts, règles, calendrier, journal          | `lib/repositories/repositories.dart`    |
+| Repositories       | Stockent contacts, règles, calendrier, journal, messages | `lib/repositories/repositories.dart`    |
 | SipService         | Traduit le SIP en objets du projet, et inversement      | `lib/services/sip/`                     |
-| Asterisk           | Route les appels, relaie la voix, héberge la messagerie | `serveur_asterisk/`                     |
+| Asterisk           | Route les appels, relaie la voix et les messages, héberge la messagerie vocale | `serveur_asterisk/`                     |
 
 Deux fichiers tiennent l'ensemble :
 - **`lib/models/modeles.dart`** : le **contrat commun**, c'est-à-dire tous les objets que les briques s'échangent.
@@ -291,6 +350,7 @@ flowchart TB
 - **Cas 2 · rediriger / messagerie** : l'appli ne transfère pas l'appel elle-même. Elle répond 302
   à Asterisk, qui appelle la cible à sa place. La messagerie est une redirection vers
   `vm` + le compte connecté (`vm400`, `vm500`), que le dialplan envoie sur `VoiceMail()`.
+  ⚠️ Asterisk bascule aussi **lui-même** sur la messagerie si personne ne décroche en 10 s (`Dial(…,10)` dans `_[45]XX`).
 - **Cas 3 · rejeter** : 603 pour un refus, 486 pour « occupé ».
 
 Dans tous les cas, **avant** d'exécuter l'action, le Gestionnaire peut aussi :
@@ -317,7 +377,7 @@ il renvoie une `Decision`. C'est ce qui le rend testable sans serveur.
    | 2 | le numéro est **bloqué temporairement** | messagerie |
    | 3 | le contact est dans le groupe **bloqué** | messagerie |
    | 4 | le numéro est **masqué** | annonce vocale `annonce-masque` |
-   | 5 | **trop d'appels sans réponse** (10 en 30 min) | messagerie + blocage 2 h |
+   | 5 | **plus de 10 appels sans réponse** en 30 min (3 pour les tests) | messagerie + blocage 2 h |
    | ⏳ | l'utilisateur est **déjà en ligne** | rejet 486 (à faire) |
 2. **Règles de l'utilisateur** : seulement les règles `active`, triées par `priorite` croissante.
    La **première dont la condition est vraie** gagne.
@@ -333,14 +393,14 @@ Un critère laissé à `null` est ignoré.
 
 | Bloc | Critère | Exemple | Fonction |
 |---|---|---|---|
-| Qui | `appelant` (+ `groupe` ou `numero`) | inconnus, contacts, groupe pro, un numéro précis, masqués | `appelantCorrespond` ⏳ |
+| Qui | `appelant` (+ `groupe` ou `numero`) | inconnus, contacts, groupe pro, un numéro précis, masqués | `appelantCorrespond` |
 | Qui | `prefixes` | `['0162', '0163']` (démarchage) | `prefixeCorrespond` |
 | Qui | `nbAppelsMin` + `nbAppelsFenetre` | 5 appels en 10 min | `seuilAppelsCorrespond` |
-| Quand | `jours` | `{6, 7}` = samedi et dimanche | `jourCorrespond` 🚧 |
-| Quand | `plage` | `PlageHoraire(Heure(18, 0), Heure(9, 0))` (passe minuit) | `plageCorrespond` 🚧 |
+| Quand | `jours` | `{6, 7}` = samedi et dimanche | `jourCorrespond` |
+| Quand | `plage` | `PlageHoraire(Heure(18, 0), Heure(9, 0))` (passe minuit) | `plageCorrespond` |
 | Quand | `siCalendrierOccupe` | pendant un événement « occupé » | `calendrierCorrespond` |
 | Quand | `siParticipantEvenement` | l'appelant est dans la réunion en cours | `calendrierCorrespond` |
-| Quand | `siVacances` | un événement « vacances » est en cours | `vacancesCorrespond` 🚧 |
+| Quand | `siVacances` | un événement « vacances » est en cours | `vacancesCorrespond` |
 | Quand | `appelRepeteDans` | a déjà appelé il y a moins de 3 min | `appelRepeteCorrespond` ⏳ |
 
 **L'action** : ce qu'on fait si la condition est vraie.
@@ -350,7 +410,7 @@ Un critère laissé à `null` est ignoré.
 | `type` | `sonner`, `rejeter`, `rediriger` ou `messagerie` |
 | `cible` | numéro de redirection (ex. `"500"`) ; pour la messagerie, remplace la boîte par défaut (`vm` + compte connecté) |
 | `codeSip` | code du rejet : 603 (refus, par défaut), 486 (occupé), 480 (indisponible) |
-| `messageTexte` | texte envoyé à l'appelant ; variables `{fin}` (heure de fin du rendez-vous) et `{nom}` (⏳ `resoudreTexte`) |
+| `messageTexte` | texte envoyé à l'appelant ; variables `{fin}` (fin du rendez-vous), `{nom}` (nom du contact), `{retour}` (retour de vacances) |
 | `envoyerMessageSip` | envoie aussi `messageTexte` par SMS SIP |
 | `sonnerPendant` + `ensuite` | « sonner 20 s, puis… » (une autre `ActionRegle`) |
 | `bloquerPendant` | bloque aussi le numéro pendant cette durée |
@@ -377,19 +437,21 @@ await Services.regles.enregistrer(regle);
 
 ### Règles prêtes à l'emploi
 
-| Règle | Priorité | Effet | Où |
-|---|---|---|---|
-| `regleNumerosIndesirables()` | 0 | Préfixes de démarchage ARCEP → messagerie | `main`, chargée par défaut |
-| `regleVacances` | 3 | En vacances → messagerie + SMS | branche `feature/when-actions` |
-| `regleEnRendezVous` | 5 | En rendez-vous → messagerie + SMS « disponible à {fin} » | `main` |
-| `regleHorsHoraires()` | 20 | 18h → 9h → messagerie + SMS | branche `feature/when-actions` |
-| Ne pas déranger | 100 | Tout → messagerie (interrupteur de l'écran Test SIP) | `sip_test_screen.dart` |
+Toutes sont **chargées par défaut** dans `services.dart` (sauf Ne pas déranger, qui est un interrupteur).
+
+| Règle | Priorité | Effet |
+|---|---|---|
+| `regleNumerosIndesirables()` | 0 | Préfixes de démarchage ARCEP → messagerie |
+| `regleVacances` | 3 | Événement « vacances » en cours → messagerie + SMS « de retour le {retour} » |
+| `regleEnRendezVous` | 5 | Événement en cours → messagerie + SMS « disponible à {fin} » |
+| `regleHorsHoraires()` | 20 | 18h → 9h → messagerie + SMS |
+| Ne pas déranger | 100 | Tout → messagerie (*Paramètres*, `Services.definirNePasDeranger`) |
 
 ### Réglages du moteur
 
 Le constructeur de `MoteurDeRegles` permet d'ajuster l'anti-harcèlement :
 `seuilHarcelement` (10), `fenetreHarcelement` (30 min), `dureeBlocageHarcelement` (2 h).
-⚠️ Dans `services.dart`, le seuil est **abaissé à 3** pour les tests : le remettre à 10 pour la version finale.
+⚠️ Dans `services.dart`, le seuil est **abaissé à 3** pour les tests (décision à prendre pour la démo).
 
 ### Ajouter un nouveau critère
 
@@ -403,61 +465,52 @@ Le constructeur de `MoteurDeRegles` permet d'ajuster l'anti-harcèlement :
 
 ```
 DevWebMobile/
-├── README.md                       ← ce fichier
-└── gestionnaire_appels/            ← le projet Flutter
-    ├── pubspec.yaml                ← dépendances (sip_ua, flutter_webrtc)
+├── README.md                        ← ce fichier
+└── gestionnaire_appels/             ← le projet Flutter
+    ├── lancer.sh                    ← lance Asterisk + console + appli
+    ├── README_MESSAGES.md           ← détail de la config des messages SIP
+    ├── pubspec.yaml                 ← dépendances (sip_ua, flutter_webrtc)
     ├── lib/
-    │   ├── main.dart               ← point d'entrée : démarre le Gestionnaire puis l'interface
-    │   ├── models/
-    │   │   ├── modeles.dart        ← ⚠️ contrat commun : tous les objets échangés
-    │   │   └── appel.dart          ← ancien modèle, utilisé par l'écran Journal (à remplacer)
+    │   ├── main.dart                ← point d'entrée : Services.initialiser() puis l'interface
+    │   ├── theme.dart               ← couleurs et styles
+    │   ├── models/modeles.dart      ← ⚠️ contrat commun : tous les objets échangés
     │   ├── services/
-    │   │   ├── services.dart       ← assemblage : crée et relie toutes les briques
+    │   │   ├── services.dart        ← assemblage : crée et relie toutes les briques
+    │   │   ├── etat_appels.dart     ← ce que l'interface affiche (appel qui sonne, en cours…)
     │   │   ├── gestionnaire_appels.dart
     │   │   ├── moteur_regles.dart
     │   │   └── sip/
-    │   │       ├── sip_service.dart     ← interface (le contrat du SipService)
+    │   │       ├── sip_service.dart     ← interface (contrat du SipService)
     │   │       └── sip_service_ua.dart  ← implémentation réelle avec sip_ua
-    │   ├── repositories/
-    │   │   └── repositories.dart   ← interfaces + versions en mémoire
-    │   ├── screens/                ← un fichier par onglet
-    │   │   ├── accueil_screen.dart ← barre de navigation
-    │   │   ├── journal_screen.dart
-    │   │   ├── contacts_screen.dart
-    │   │   ├── clavier_screen.dart
-    │   │   └── sip_test_screen.dart ← connexion, appels et décisions en direct
-    │   ├── widgets/                ← composants réutilisés par les écrans
-    │   └── data/
-    │       └── fausses_donnees.dart ← données de démo (à supprimer à terme)
-    ├── test/
-    │   └── moteur_regles_test.dart ← tests unitaires du moteur
+    │   ├── repositories/repositories.dart ← contacts, règles, calendrier, journal, messages (en mémoire)
+    │   ├── screens/
+    │   │   ├── accueil_screen.dart      ← navigation : Journal · Messages · Contacts · Paramètres
+    │   │   ├── appel_entrant_screen.dart ← écran plein d'appel entrant (+ message rapide)
+    │   │   ├── journal_screen.dart, messages_screen.dart, contacts_screen.dart,
+    │   │   ├── contact_detail_screen.dart, parametres_screen.dart, clavier_screen.dart
+    │   │   └── sip_test_screen.dart     ← ancien écran de test, plus dans la navigation
+    │   └── widgets/                 ← composants (barre latérale, en-tête, couche d'appels…)
+    ├── test/moteur_regles_test.dart ← tests unitaires du moteur
     └── serveur_asterisk/
-        ├── Makefile                ← make / make run
-        ├── Dockerfile
-        └── configuration/          ← monté dans le conteneur
-            ├── pjsip.conf          ← comptes 300, 400, 500 et transports
-            ├── extensions.conf     ← dialplan : _XXX, 100 (écho), vm400/vm500, annonce-masque
-            └── http.conf           ← WebSocket 8088 / 8089
+        ├── Makefile, Dockerfile
+        └── configuration/           ← monté sur /etc/asterisk dans le conteneur
+            ├── pjsip.conf           ← comptes 300, 400, 500, transports, message_context
+            ├── extensions.conf      ← dialplan : appels, vm400/vm500, tests 8400/9400, [messages]
+            ├── voicemail.conf       ← boîtes vocales 400 et 500
+            ├── modules.conf         ← modules chargés (messaging, voicemail, record…)
+            └── http.conf            ← WebSocket 8088 / 8089
 ```
-
-| Brique du schéma | Fichier |
-|---|---|
-| Écrans | `lib/screens/` |
-| GestionnaireAppels (+ Exécution) | `lib/services/gestionnaire_appels.dart` |
-| MoteurDeRegles | `lib/services/moteur_regles.dart` |
-| Repositories | `lib/repositories/repositories.dart` |
-| SipService | `lib/services/sip/` |
-| Asterisk | `serveur_asterisk/` |
 
 ## Tests
 
 ```bash
 cd gestionnaire_appels
-flutter test
+flutter analyze && flutter test
 ```
 
 Les tests du moteur n'ont besoin ni d'Asterisk ni d'interface : on construit un `ContexteDecision`
-à la main, on appelle `decider()` et on vérifie la `Decision`.
+à la main, on appelle `decider()` et on vérifie la `Decision`. Le test choisit `maintenant`,
+ce qui permet de simuler « dimanche à 23h » (le `GestionnaireAppels` accepte de même une `horloge`).
 
 ```dart
 test('nuit → messagerie à 23h', () {
@@ -469,57 +522,40 @@ test('nuit → messagerie à 23h', () {
 });
 ```
 
-- **`maintenant` est choisi par le test** : c'est ce qui permet de simuler « dimanche à 23h »
-  sans attendre dimanche. Le `GestionnaireAppels` accepte de la même façon une `horloge`.
-- **Convention `skip`** : un test écrit avant son implémentation est marqué
-  `skip: 'nomDeLaFonction'`. Une fois la fonction faite, on **enlève le `skip`** et le test doit passer.
-- Avant chaque PR : `flutter test` doit être vert (hors `skip`).
+**Convention `skip`** : un test écrit avant son implémentation porte `skip: 'nomDeLaFonction'` ;
+une fois la fonction faite, on enlève le `skip`. Restent en `skip` :
+`reglesSysteme : liste noire`, `appelRepeteCorrespond`. Avant chaque PR : tout vert hors `skip`.
 
 ## Travailler en équipe
 
-### Répartition
+### Équipe
 
-| Bloc | Responsable | Fonctions | Branche |
-|---|---|---|---|
-| Qui | Mattis | `reglesSysteme`, `appelantCorrespond`, `prefixeCorrespond`, `seuilAppelsCorrespond` | `feature/who-actions` |
-| Quand | Noussayba, Dimitri | `jourCorrespond`, `plageCorrespond`, `calendrierCorrespond`, `vacancesCorrespond`, agenda du téléphone | `feature/when-actions` |
-| Réponse | Mathieu | `resoudreTexte`, `_executer`, `SipService.rejeter/rediriger/envoyerMessage`, messagerie `vm400` côté Asterisk | `feature/response-actions` |
-| À attribuer | — | `appelRepeteCorrespond`, écran Journal, écrans Règles et Calendrier | — |
+| Membre | Rôle |
+|---|---|
+| Mattis | Architecture commune, Asterisk, bloc Qui, refonte de l'interface |
+| Noussayba | Bloc Quand (jours, plage horaire, vacances, rendez-vous) |
+| Dimitri | Bloc Quand, message rapide, messages reçus, messagerie vm400/vm500, `lancer.sh`, documentation |
+| Mathieu | Bloc Réponse : messages SIP côté Asterisk, messagerie vocale |
+
+La répartition des tâches P0 / P1 se décide ensemble ; noter le nom à côté de la tâche dans ce README.
 
 ### Workflow Git
 
-1. Partir de `main` à jour : `git switch main && git pull`.
-2. Travailler sur la branche de son bloc : `git switch -c feature/...`.
-3. Avant la PR : `git merge main`, puis `flutter test`.
-4. Ouvrir une **Pull Request vers `main`** sur GitHub ; un autre membre relit avant le merge.
+1. Partir de `main` à jour : `git switch main && git pull`, puis `git switch -c feature/...`.
+2. Avant la PR : `git merge main`, puis `flutter analyze && flutter test`.
+3. **Pull Request vers `main`** sur GitHub ; un autre membre relit avant le merge.
+
+Astuce : `git worktree add ../DevWebMobile-autre feature/xxx` ouvre une 2ᵉ branche dans un autre
+dossier (et une autre fenêtre VS Code) sans changer de branche. Lancer alors l'appli sur `--web-port 8081`
+et garder **un seul** Asterisk.
 
 ### Règles d'or
 
 - ⚠️ **Ne pas modifier `lib/models/modeles.dart` sans prévenir** : tout le monde en dépend.
-- **Un bloc = une branche = ses propres fonctions** dans `moteur_regles.dart`, pour éviter les conflits.
-- **Les écrans passent toujours par `Services.gestionnaire`**, jamais directement par sip_ua.
-- Mettre à jour les états ✅ 🚧 ⏳ de ce README quand une fonctionnalité est mergée.
+- **Les écrans passent par `Services.etat` ou `Services.gestionnaire`**, jamais directement par sip_ua.
+- **Pas de dialogue ni de Tooltip dans l'écran d'appel entrant** : il est posé au-dessus du Navigator.
+- Dans `extensions.conf`, tout ce qui suit `[messages]` est dans ce contexte : ajouter les extensions
+  d'appel **avant**.
+- Mettre à jour les états ✅ 🚧 ⏳ de ce README à chaque merge.
 
-## Limites connues et prochaines étapes
-
-| Limite | Conséquence | Piste |
-|---|---|---|
-| Données en mémoire | Contacts, règles et journal sont perdus à chaque redémarrage | Repositories persistants (`sqflite` sur Android), en gardant la version mémoire pour le web |
-| Dial de 10 s dans `_[45]XX` | Asterisk envoie lui-même sur la messagerie au bout de 10 s : la règle « sonner 20 s puis messagerie » de l'appli ne se déclenche jamais | Allonger le `Dial` (> 20 s) ou raccourcir `sonnerPendant` |
-| Redirection 302 et SMS SIP non validés | On ne sait pas encore si Asterisk suit le 302 et relaie les MESSAGE | Tester avec deux clients ; vérifier `res_pjsip_messaging` |
-| Écran Journal sur fausses données | Le vrai journal n'est pas affiché | Brancher l'écran sur `Services.journal.surveiller()` |
-| Pas d'écran Règles ni Calendrier | Les règles s'ajoutent seulement dans le code (ou « Ne pas déranger ») | Écrans de création / édition |
-| Seuil anti-harcèlement à 3 | Valeur de test dans `services.dart` | Remettre 10 avant le rendu |
-| Arrière-plan Android | Android peut couper le WebSocket SIP quand l'appli est en veille | Service au premier plan (`flutter_foreground_task`) + notification d'appel |
-| Pas de `SipServiceFaux` | Impossible de tester l'interface sans Asterisk | Implémenter l'interface `SipService` avec des appels simulés |
-
-## Équipe
-
-| Membre | Rôle |
-|---|---|
-| Mattis | Architecture commune, serveur Asterisk, bloc Qui |
-| Noussayba | Bloc Quand (agenda, vacances, horaires) |
-| Dimitri | Bloc Quand, documentation |
-| Mathieu | Bloc Réponse |
-
-Projet de groupe — ENSEIRB-MATMECA, 3ᵉ année.
+Projet de groupe : ENSEIRB-MATMECA, 3ᵉ année.
