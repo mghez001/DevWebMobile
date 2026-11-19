@@ -73,17 +73,18 @@ class SipServiceUa implements SipService, SipUaHelperListener {
     _compte = compte;
     _changerEtat(EtatConnexion.connexion);
 
-    final reglages = UaSettings()
-      ..transportType = TransportType.WS
-      ..webSocketUrl = compte.urlWebSocket
-      ..uri = '${compte.utilisateur}@${compte.serveur}'
-      ..host = compte.serveur
-      ..authorizationUser = compte.utilisateur
-      ..password = compte.motDePasse
-      ..displayName = compte.nomAffiche
-      ..userAgent = 'Gestionnaire appels'
-      ..dtmfMode = DtmfMode.RFC2833
-      ..register = true;
+    final reglages =
+        UaSettings()
+          ..transportType = TransportType.WS
+          ..webSocketUrl = compte.urlWebSocket
+          ..uri = '${compte.utilisateur}@${compte.serveur}'
+          ..host = compte.serveur
+          ..authorizationUser = compte.utilisateur
+          ..password = compte.motDePasse
+          ..displayName = compte.nomAffiche
+          ..userAgent = 'Gestionnaire appels'
+          ..dtmfMode = DtmfMode.RFC2833
+          ..register = true;
     reglages.webSocketSettings.allowBadCertificate = true;
 
     await _helper.start(reglages);
@@ -206,22 +207,27 @@ class SipServiceUa implements SipService, SipUaHelperListener {
   @override
   void callStateChanged(Call call, CallState state) {
     final id = call.id;
-    debugPrint('[GA] SIP callStateChanged ${state.state} id=$id '
-        'direction=${call.direction} de=${call.remote_identity}');
+    debugPrint(
+      '[GA] SIP callStateChanged ${state.state} id=$id '
+      'direction=${call.direction} de=${call.remote_identity}',
+    );
     if (id == null) return;
 
     switch (state.state) {
       case CallStateEnum.CALL_INITIATION:
         _appels[id] = call;
-        final entrant =
-            call.direction.toString().toLowerCase().contains('incoming');
+        final entrant = call.direction.toString().toLowerCase().contains(
+          'incoming',
+        );
         if (entrant) {
-          _appelsEntrants.add(AppelEntrant(
-            idAppel: id,
-            numero: normaliserNumero(call.remote_identity ?? ''),
-            nomAffiche: call.remote_display_name,
-            recuLe: DateTime.now(),
-          ));
+          _appelsEntrants.add(
+            AppelEntrant(
+              idAppel: id,
+              numero: normaliserNumero(call.remote_identity ?? ''),
+              nomAffiche: call.remote_display_name,
+              recuLe: DateTime.now(),
+            ),
+          );
           _etatAppels.add(EtatAppel(idAppel: id, statut: StatutAppel.sonne));
         } else {
           final attente = _prochainSortant;
@@ -242,11 +248,13 @@ class SipServiceUa implements SipService, SipUaHelperListener {
       case CallStateEnum.ENDED:
       case CallStateEnum.FAILED:
         final echec = state.state == CallStateEnum.FAILED;
-        _etatAppels.add(EtatAppel(
-          idAppel: id,
-          statut: echec ? StatutAppel.echec : StatutAppel.termine,
-          detail: state.cause?.reason_phrase ?? state.cause?.cause,
-        ));
+        _etatAppels.add(
+          EtatAppel(
+            idAppel: id,
+            statut: echec ? StatutAppel.echec : StatutAppel.termine,
+            detail: state.cause?.reason_phrase ?? state.cause?.cause,
+          ),
+        );
         _appels.remove(id);
         _enCours.remove(id);
         if (_appels.isEmpty) {
@@ -302,8 +310,10 @@ class SipServiceUa implements SipService, SipUaHelperListener {
   }
 
   Future<MediaStream> _ouvrirMicro() async {
-    return _micro ??= await navigator.mediaDevices
-        .getUserMedia({'audio': true, 'video': false});
+    return _micro ??= await navigator.mediaDevices.getUserMedia({
+      'audio': true,
+      'video': false,
+    });
   }
 
   void _libererMicro() {

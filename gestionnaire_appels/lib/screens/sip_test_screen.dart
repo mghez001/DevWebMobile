@@ -17,12 +17,15 @@ class SipTestScreen extends StatefulWidget {
 }
 
 class _SipTestScreenState extends State<SipTestScreen> {
-  final _ipServeur =
-      TextEditingController(text: Services.compteParDefaut.serveur);
-  final _utilisateur =
-      TextEditingController(text: Services.compteParDefaut.utilisateur);
-  final _motDePasse =
-      TextEditingController(text: Services.compteParDefaut.motDePasse);
+  final _ipServeur = TextEditingController(
+    text: Services.compteParDefaut.serveur,
+  );
+  final _utilisateur = TextEditingController(
+    text: Services.compteParDefaut.utilisateur,
+  );
+  final _motDePasse = TextEditingController(
+    text: Services.compteParDefaut.motDePasse,
+  );
   final _destination = TextEditingController(text: '300');
 
   EtatConnexion _etat = Services.sipUa.etatActuel;
@@ -43,11 +46,17 @@ class _SipTestScreenState extends State<SipTestScreen> {
     super.initState();
     _abonnements.addAll([
       Services.sip.etatConnexion.listen((e) => setState(() => _etat = e)),
-      Services.gestionnaire.appelsASonner
-          .listen((a) => setState(() => _sonne = a)),
-      Services.gestionnaire.decisions.listen((d) => setState(
-          () => _decisions.insert(0, (d.$1, d.$2, DateTime.now())))),
+      Services.gestionnaire.appelsASonner.listen(
+        (a) => setState(() => _sonne = a),
+      ),
+      Services.gestionnaire.decisions.listen(
+        (d) =>
+            setState(() => _decisions.insert(0, (d.$1, d.$2, DateTime.now()))),
+      ),
       Services.sip.etatAppels.listen(_suivreEtat),
+      Services.sipUa.messagesRecus.listen(
+        (m) => _message('Message de ${m.$1} : ${m.$2}'),
+      ),
     ]);
   }
 
@@ -86,29 +95,32 @@ class _SipTestScreenState extends State<SipTestScreen> {
   /// Les favoris passent quand même (règle système, testée avant).
   Future<void> _basculerNePasDeranger(bool actif) async {
     if (actif) {
-      await Services.regles.enregistrer(const Regle(
-        id: _idNePasDeranger,
-        nom: 'Ne pas déranger',
-        priorite: 100,
-        condition: ConditionRegle(),
-        action: ActionRegle(type: TypeAction.messagerie),
-      ));
+      await Services.regles.enregistrer(
+        const Regle(
+          id: _idNePasDeranger,
+          nom: 'Ne pas déranger',
+          priorite: 100,
+          condition: ConditionRegle(),
+          action: ActionRegle(type: TypeAction.messagerie),
+        ),
+      );
     } else {
       await Services.regles.supprimer(_idNePasDeranger);
     }
   }
 
-  Future<void> _connecter() => Services.sip.connecter(CompteSip(
-        serveur: _ipServeur.text.trim(),
-        utilisateur: _utilisateur.text.trim(),
-        motDePasse: _motDePasse.text,
-        nomAffiche: Services.compteParDefaut.nomAffiche,
-      ));
+  Future<void> _connecter() => Services.sip.connecter(
+    CompteSip(
+      serveur: _ipServeur.text.trim(),
+      utilisateur: _utilisateur.text.trim(),
+      motDePasse: _motDePasse.text,
+      nomAffiche: Services.compteParDefaut.nomAffiche,
+    ),
+  );
 
   Future<void> _appeler() async {
     try {
-      final id =
-          await Services.gestionnaire.appeler(_destination.text.trim());
+      final id = await Services.gestionnaire.appeler(_destination.text.trim());
       setState(() => _appelEnCours = id);
     } catch (e) {
       _message('Appel impossible : $e');
@@ -116,8 +128,7 @@ class _SipTestScreenState extends State<SipTestScreen> {
   }
   void _message(String texte) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(texte)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texte)));
   }
 
   // ---------------- Réponse par message ----------------
@@ -190,8 +201,8 @@ class _SipTestScreenState extends State<SipTestScreen> {
                   leading: const Icon(Icons.phone_in_talk, color: Colors.green),
                   title: const Text('En communication'),
                   trailing: FilledButton.icon(
-                    onPressed: () =>
-                        Services.gestionnaire.raccrocher(_appelEnCours!),
+                    onPressed:
+                        () => Services.gestionnaire.raccrocher(_appelEnCours!),
                     style: FilledButton.styleFrom(backgroundColor: Colors.red),
                     icon: const Icon(Icons.call_end),
                     label: const Text('Raccrocher'),
@@ -203,17 +214,19 @@ class _SipTestScreenState extends State<SipTestScreen> {
             StreamBuilder<List<Regle>>(
               stream: Services.regles.surveiller(),
               builder: (context, snapshot) {
-                final actif =
-                    (snapshot.data ?? []).any((r) => r.id == _idNePasDeranger);
+                final actif = (snapshot.data ?? []).any(
+                  (r) => r.id == _idNePasDeranger,
+                );
                 return SwitchListTile(
                   value: actif,
                   onChanged: _basculerNePasDeranger,
-                  secondary: Icon(actif
-                      ? Icons.do_not_disturb_on
-                      : Icons.do_not_disturb_off),
+                  secondary: Icon(
+                    actif ? Icons.do_not_disturb_on : Icons.do_not_disturb_off,
+                  ),
                   title: const Text('Ne pas déranger'),
                   subtitle: const Text(
-                      'Tous les appels vont sur la messagerie, sauf les favoris'),
+                    'Tous les appels vont sur la messagerie, sauf les favoris',
+                  ),
                   contentPadding: EdgeInsets.zero,
                 );
               },
@@ -230,7 +243,9 @@ class _SipTestScreenState extends State<SipTestScreen> {
                   child: TextField(
                     controller: _ipServeur,
                     decoration: const InputDecoration(
-                        labelText: 'IP serveur', border: OutlineInputBorder()),
+                      labelText: 'IP serveur',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -238,7 +253,9 @@ class _SipTestScreenState extends State<SipTestScreen> {
                   child: TextField(
                     controller: _utilisateur,
                     decoration: const InputDecoration(
-                        labelText: 'Compte', border: OutlineInputBorder()),
+                      labelText: 'Compte',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -247,8 +264,9 @@ class _SipTestScreenState extends State<SipTestScreen> {
                     controller: _motDePasse,
                     obscureText: true,
                     decoration: const InputDecoration(
-                        labelText: 'Mot de passe',
-                        border: OutlineInputBorder()),
+                      labelText: 'Mot de passe',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
               ],
@@ -286,7 +304,8 @@ class _SipTestScreenState extends State<SipTestScreen> {
                 ),
                 const SizedBox(width: 8),
                 FilledButton.icon(
-                  onPressed: connecte && _appelEnCours == null ? _appeler : null,
+                  onPressed:
+                      connecte && _appelEnCours == null ? _appeler : null,
                   icon: const Icon(Icons.call),
                   label: const Text('Appeler'),
                 ),
@@ -319,8 +338,10 @@ class _SipTestScreenState extends State<SipTestScreen> {
         child: Column(
           children: [
             const Icon(Icons.ring_volume, size: 40),
-            Text(contact?.nom ?? appel.nomAffiche ?? appel.numero,
-                style: Theme.of(context).textTheme.headlineSmall),
+            Text(
+              contact?.nom ?? appel.nomAffiche ?? appel.numero,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
             Text(appel.numero),
             const SizedBox(height: 12),
             Wrap(
@@ -329,15 +350,14 @@ class _SipTestScreenState extends State<SipTestScreen> {
               runSpacing: 8,
               children: [
                 FilledButton.icon(
-                  onPressed: () =>
-                      Services.gestionnaire.decrocher(appel.idAppel),
+                  onPressed:
+                      () => Services.gestionnaire.decrocher(appel.idAppel),
                   style: FilledButton.styleFrom(backgroundColor: Colors.green),
                   icon: const Icon(Icons.call),
                   label: const Text('Décrocher'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () =>
-                      Services.gestionnaire.rejeter(appel.idAppel),
+                  onPressed: () => Services.gestionnaire.rejeter(appel.idAppel),
                   style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
                   icon: const Icon(Icons.call_end),
                   label: const Text('Rejeter'),
@@ -363,7 +383,8 @@ class _SipTestScreenState extends State<SipTestScreen> {
       TypeAction.rediriger => (Icons.phone_forwarded, Colors.orange),
       TypeAction.messagerie => (Icons.voicemail, Colors.blue),
     };
-    final heure = '${quand.hour.toString().padLeft(2, '0')}:'
+    final heure =
+        '${quand.hour.toString().padLeft(2, '0')}:'
         '${quand.minute.toString().padLeft(2, '0')}:'
         '${quand.second.toString().padLeft(2, '0')}';
 
@@ -372,19 +393,24 @@ class _SipTestScreenState extends State<SipTestScreen> {
       leading: Icon(icone, color: couleur),
       title: Text(contact?.nom ?? appel.numero),
       subtitle: Text('$heure · ${decision.explication}'),
-      trailing: appel.estMasque
-          ? null
-          : IconButton(
-              tooltip: contact == null
-                  ? 'Enregistrer en contact'
-                  : 'Modifier le contact',
-              icon: Icon(contact == null ? Icons.person_add : Icons.edit),
-              onPressed: () async {
-                await ouvrirFicheContact(context,
-                    existant: contact, numero: appel.numero);
-                setState(() {}); // rafraîchit le nom affiché
-              },
-            ),
+      trailing:
+          appel.estMasque
+              ? null
+              : IconButton(
+                tooltip:
+                    contact == null
+                        ? 'Enregistrer en contact'
+                        : 'Modifier le contact',
+                icon: Icon(contact == null ? Icons.person_add : Icons.edit),
+                onPressed: () async {
+                  await ouvrirFicheContact(
+                    context,
+                    existant: contact,
+                    numero: appel.numero,
+                  );
+                  setState(() {}); // rafraîchit le nom affiché
+                },
+              ),
     );
   }
 }
