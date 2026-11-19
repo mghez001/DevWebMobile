@@ -25,7 +25,7 @@ class GestionnaireAppels {
     required this.journal,
     MessageRepository? messages,
     this.moteur = const MoteurDeRegles(),
-    this.cibleMessagerie = 'vm400',
+    this.cibleMessagerieParDefaut = 'vm400',
     DateTime Function()? horloge,
   })  : messages = messages ?? MessageRepositoryMemoire(),
         _horloge = horloge ?? DateTime.now;
@@ -40,8 +40,15 @@ class GestionnaireAppels {
   final MessageRepository messages;
   final MoteurDeRegles moteur;
 
-  /// Extension Asterisk de la messagerie vocale (dialplan : VoiceMail).
-  final String cibleMessagerie;
+  /// Messagerie utilisée tant qu'aucun compte SIP n'est connu.
+  final String cibleMessagerieParDefaut;
+
+  /// Extension Asterisk de la messagerie vocale du compte connecté
+  /// (« vm » + numéro, ex. vm500 ; dialplan : _vm[45]XX → VoiceMail).
+  String get cibleMessagerie {
+    final numero = sip.compte?.utilisateur ?? '';
+    return numero.isEmpty ? cibleMessagerieParDefaut : 'vm$numero';
+  }
 
   /// Injectable pour les tests (simuler « 23h un dimanche »…).
   final DateTime Function() _horloge;

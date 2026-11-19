@@ -69,6 +69,9 @@ class SipServiceUa implements SipService, SipUaHelperListener {
   // -------------------------------------------------------------------
 
   @override
+  CompteSip? get compte => _compte;
+
+  @override
   Future<void> connecter(CompteSip compte) async {
     _compte = compte;
     _changerEtat(EtatConnexion.connexion);
